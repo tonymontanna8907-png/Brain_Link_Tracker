@@ -998,3 +998,60 @@ with app.app_context():
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 
+
+# Debug endpoint to check database status
+@app.route('/api/debug/users')
+def debug_users():
+    """Debug endpoint to check users in database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("SELECT id, username, role, status FROM users")
+        else:
+            cursor.execute("SELECT id, username, role, status FROM users")
+        
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'id': row[0],
+                'username': row[1],
+                'role': row[2],
+                'status': row[3]
+            })
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "users": users,
+            "database_type": DATABASE_TYPE,
+            "database_url_set": bool(os.environ.get("DATABASE_URL")),
+            "secret_key_set": bool(os.environ.get("SECRET_KEY"))
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "database_type": DATABASE_TYPE,
+            "database_url_set": bool(os.environ.get("DATABASE_URL")),
+            "secret_key_set": bool(os.environ.get("SECRET_KEY"))
+        }), 500
+
+# Force database initialization endpoint
+@app.route('/api/debug/init-db')
+def debug_init_db():
+    """Debug endpoint to force database initialization"""
+    try:
+        result = init_db()
+        return jsonify({
+            "message": "Database initialization completed",
+            "success": result
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "message": "Database initialization failed"
+        }), 500
+
