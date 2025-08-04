@@ -991,14 +991,6 @@ def update_user(user_id):
         print(f"Update user error: {e}")
         return jsonify({"error": "Failed to update user"}), 500
 
-# Initialize database on startup
-with app.app_context():
-    init_db()
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
-
-
 # Simple debug endpoint to test database connection
 @app.route('/api/test-db')
 def test_db():
@@ -1107,4 +1099,11 @@ def debug_init_db():
             "error": str(e),
             "message": "Database initialization failed"
         }), 500
+
+# Initialize database on startup
+with app.app_context():
+    init_db()
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
