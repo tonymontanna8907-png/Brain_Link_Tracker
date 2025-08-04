@@ -21,8 +21,9 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/link-tracker-dashboard/index.html"
+      "dest": "/link-tracker-dashboard/dist/index.html"
     }
   ]
 }
+
 
