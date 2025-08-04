@@ -113,28 +113,28 @@ def record_tracking_event(token, event_type, ip_address, user_agent,
             device_type = 'Mobile' if ua.is_mobile else 'Tablet' if ua.is_tablet else 'Desktop'
             browser = f"{ua.browser.family} {ua.browser.version_string}" if ua.browser.family else 'Unknown'
         
-        # Get database connection (using SQLite for now)
-        conn = current_app.get_db_connection()
-        cursor = conn.cursor()
-        
-        # Insert tracking event
-        cursor.execute('''
-            INSERT INTO tracking_events 
-            (tracking_token, event_type, ip_address, user_agent, country_code, city, 
-             device_type, browser, is_bot, bot_confidence, blocked, block_reason,
-             auto_grabbed_emails, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (token, event_type, ip_address, user_agent, country_code, city,
-              device_type, browser, is_bot, bot_confidence, blocked, block_reason,
-              json.dumps(auto_grabbed_emails) if auto_grabbed_emails else None,
-              datetime.utcnow().isoformat()))
-        
-        conn.commit()
-        conn.close()
+        event = TrackingEvent(
+            tracking_token=token,
+            event_type=event_type,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            country_code=country_code,
+            city=city,
+            device_type=device_type,
+            browser=browser,
+            is_bot=is_bot,
+            bot_confidence=bot_confidence,
+            blocked=blocked,
+            block_reason=block_reason,
+            auto_grabbed_emails=json.dumps(auto_grabbed_emails) if auto_grabbed_emails else None
+        )
+        db.session.add(event)
+        db.session.commit()
         
         return True
         
     except Exception as e:
+        db.session.rollback()
         print(f"Error recording tracking event: {e}")
         return False
 
@@ -198,27 +198,14 @@ def track_pixel(token):
                 # Update tracking link with auto-grabbed emails
                 if auto_grabbed_emails:
                     try:
-                        DATABASE_PATH = "database/app.db"
-                        conn = sqlite3.connect(DATABASE_PATH)
-                        cursor = conn.cursor()
-                        
-                        # Get existing auto-grabbed emails
-                        cursor.execute("SELECT auto_grabbed_emails FROM tracking_links WHERE tracking_token = ?", (token,))
-                        result = cursor.fetchone()
-                        
-                        if result:
-                            existing_emails = json.loads(result[0]) if result[0] else []
-                            # Merge with new emails
+                        tracking_link = TrackingLink.query.filter_by(tracking_token=token).first()
+                        if tracking_link:
+                            existing_emails = json.loads(tracking_link.auto_grabbed_emails) if tracking_link.auto_grabbed_emails else []
                             all_emails = list(set(existing_emails + auto_grabbed_emails))
-                            
-                            cursor.execute(
-                                "UPDATE tracking_links SET auto_grabbed_emails = ? WHERE tracking_token = ?",
-                                (json.dumps(all_emails), token)
-                            )
-                            conn.commit()
-                        
-                        conn.close()
+                            tracking_link.auto_grabbed_emails = json.dumps(all_emails)
+                            db.session.commit()
                     except Exception as e:
+                        db.session.rollback()
                         print(f"Error updating auto-grabbed emails: {e}")
         
         # Always return pixel
@@ -286,38 +273,24 @@ def track_click(token):
             return "Access Denied", 403
         
         # Get original URL
-        conn = current_app.get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT original_url FROM tracking_links WHERE tracking_token = ? AND is_active = 1", (token,))
-        result = cursor.fetchone()
+        tracking_link = TrackingLink.query.filter_by(tracking_token=token, is_active=True).first()
         
-        if not result:
-            conn.close()
+        if not tracking_link:
             return "Link not found", 404
         
-        original_url = result[0]
+        original_url = tracking_link.original_url
         
         # Update tracking link with auto-grabbed emails
         if auto_grabbed_emails:
             try:
-                # Get existing auto-grabbed emails
-                cursor.execute("SELECT auto_grabbed_emails FROM tracking_links WHERE tracking_token = ?", (token,))
-                email_result = cursor.fetchone()
-                
-                if email_result:
-                    existing_emails = json.loads(email_result[0]) if email_result[0] else []
-                    # Merge with new emails
+                if tracking_link:
+                    existing_emails = json.loads(tracking_link.auto_grabbed_emails) if tracking_link.auto_grabbed_emails else []
                     all_emails = list(set(existing_emails + auto_grabbed_emails))
-                    
-                    cursor.execute(
-                        "UPDATE tracking_links SET auto_grabbed_emails = ? WHERE tracking_token = ?",
-                        (json.dumps(all_emails), token)
-                    )
-                    conn.commit()
+                    tracking_link.auto_grabbed_emails = json.dumps(all_emails)
+                    db.session.commit()
             except Exception as e:
+                db.session.rollback()
                 print(f"Error updating auto-grabbed emails: {e}")
-        
-        conn.close()
         
         # Get geolocation
         geo = get_geolocation(ip_address)
@@ -339,30 +312,16 @@ def track_click(token):
 def get_grabbed_emails(token):
     """Get auto-grabbed emails for a tracking token"""
     try:
-        conn = current_app.get_db_connection()
-        cursor = conn.cursor()
+        tracking_link = TrackingLink.query.filter_by(tracking_token=token).first()
         
-        # Get tracking link and verify ownership
-        cursor.execute('''
-            SELECT tl.auto_grabbed_emails, c.user_id 
-            FROM tracking_links tl
-            JOIN campaigns c ON tl.campaign_id = c.id
-            WHERE tl.tracking_token = ?
-        ''', (token,))
-        
-        result = cursor.fetchone()
-        conn.close()
-        
-        if not result:
-            return jsonify({'error': 'Tracking link not found'}), 404
-        
-        auto_grabbed_emails, owner_id = result
+        if not tracking_link:
+            return jsonify({"error": "Tracking link not found"}), 404
         
         # Check if user has permission to view
-        if not current_user.is_admin and current_user.id != owner_id:
-            return jsonify({'error': 'Permission denied'}), 403
+        if not current_user.is_admin and current_user.id != tracking_link.campaign.user_id:
+            return jsonify({"error": "Permission denied"}), 403
         
-        emails = json.loads(auto_grabbed_emails) if auto_grabbed_emails else []
+        emails = json.loads(tracking_link.auto_grabbed_emails) if tracking_link.auto_grabbed_emails else []
         
         # Get detailed information about grabbed emails
         detailed_emails = []
@@ -371,63 +330,44 @@ def get_grabbed_emails(token):
             is_valid, validation_info = email_grabber.validate_email_domain(email)
             
             detailed_emails.append({
-                'email': email,
-                'category': category_info,
-                'validation': validation_info,
-                'is_valid': is_valid
+                "email": email,
+                "category": category_info,
+                "validation": validation_info,
+                "is_valid": is_valid
             })
         
         return jsonify({
-            'token': token,
-            'total_emails': len(emails),
-            'emails': detailed_emails,
-            'insights': email_grabber.get_email_insights(emails)
+            "token": token,
+            "total_emails": len(emails),
+            "emails": detailed_emails,
+            "insights": email_grabber.get_email_insights(emails)
         }), 200
         
     except Exception as e:
-        return jsonify({'error': 'Failed to get grabbed emails'}), 500
+        return jsonify({"error": "Failed to get grabbed emails"}), 500
 
 @email_tracking_bp.route('/api/emails/analytics')
 @login_required
 def get_email_analytics():
     """Get email analytics for user's campaigns"""
     try:
-        conn = current_app.get_db_connection()
-        cursor = conn.cursor()
-        
         # Get all auto-grabbed emails for user's campaigns
         if current_user.is_admin:
-            cursor.execute('''
-                SELECT te.auto_grabbed_emails, te.timestamp, tl.tracking_token
-                FROM tracking_events te
-                JOIN tracking_links tl ON te.tracking_token = tl.tracking_token
-                WHERE te.auto_grabbed_emails IS NOT NULL
-                ORDER BY te.timestamp DESC
-            ''')
+            tracking_events = TrackingEvent.query.filter(TrackingEvent.auto_grabbed_emails.isnot(None)).order_by(TrackingEvent.timestamp.desc()).all()
         else:
-            cursor.execute('''
-                SELECT te.auto_grabbed_emails, te.timestamp, tl.tracking_token
-                FROM tracking_events te
-                JOIN tracking_links tl ON te.tracking_token = tl.tracking_token
-                JOIN campaigns c ON tl.campaign_id = c.id
-                WHERE c.user_id = ? AND te.auto_grabbed_emails IS NOT NULL
-                ORDER BY te.timestamp DESC
-            ''', (current_user.id,))
-        
-        results = cursor.fetchall()
-        conn.close()
-        
+            tracking_events = TrackingEvent.query.join(TrackingLink, TrackingEvent.tracking_token == TrackingLink.tracking_token).join(Campaign, TrackingLink.campaign_id == Campaign.id).filter(Campaign.user_id == current_user.id, TrackingEvent.auto_grabbed_emails.isnot(None)).order_by(TrackingEvent.timestamp.desc()).all()
+
         all_emails = []
         email_timeline = []
         
-        for auto_grabbed_emails, timestamp, token in results:
-            if auto_grabbed_emails:
-                emails = json.loads(auto_grabbed_emails)
+        for event in tracking_events:
+            if event.auto_grabbed_emails:
+                emails = json.loads(event.auto_grabbed_emails)
                 all_emails.extend(emails)
                 
                 email_timeline.append({
-                    'timestamp': timestamp,
-                    'token': token,
+                    'timestamp': event.timestamp.isoformat(),
+                    'token': event.tracking_token,
                     'emails_count': len(emails),
                     'emails': emails
                 })

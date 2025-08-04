@@ -335,39 +335,26 @@ def reset_password():
         is_strong, message = validate_password_strength(new_password)
         if not is_strong:
             return jsonify({'error': message}), 400
-        conn = current_app.get_db_connection()
-        cursor = conn.cursor()
-        try:
-            user_data = cursor.fetchone()
+        user = User.query.filter_by(password_reset_token=token).first()
 
-            if not user_data:
-                return jsonify({"error": "Invalid or expired reset token"}), 400
+        if not user:
+            return jsonify({"error": "Invalid or expired reset token"}), 400
 
-            user_id, db_token, expires_at = user_data
+        if not user.password_reset_token or (datetime.utcnow() > user.password_reset_expires_at):
+            return jsonify({"error": "Invalid or expired reset token"}), 400
 
-            if not db_token or (datetime.utcnow() > expires_at):
-                return jsonify({"error": "Invalid or expired reset token"}), 400
+        user.set_password(new_password)
+        user.password_reset_token = None
+        user.password_reset_expires_at = None
+        db.session.commit()
 
-            hashed_password = generate_password_hash(new_password)
-            cursor.execute("UPDATE users SET password_hash = %s, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = %s",
-                           (hashed_password, user_id))
-            conn.commit()
+        log_audit_event("password_reset_completed", user.id, "auth", None)
 
-            log_audit_event("password_reset_completed", user_id, "auth", None)
+        # Send confirmation email
+        send_email(user.email, "Password Changed - 7th Brain", 
+                  "Your password has been successfully changed.")
 
-            # Send confirmation email
-            # You might need to fetch the user's email here if not already available
-            cursor.execute("SELECT email FROM users WHERE id = %s", (user_id,))
-            user_email = cursor.fetchone()[0]
-            send_email(user_email, "Password Changed - 7th Brain", 
-                      "Your password has been successfully changed.")
-
-            return jsonify({"message": "Password reset successful"}), 200
-        except Exception as e:
-            conn.rollback()
-            return jsonify({"error": str(e)}), 500
-        finally:
-            conn.close()      
+        return jsonify({"message": "Password reset successful"}), 200
     except Exception as e:
         return jsonify({'error': 'Password reset failed'}), 500
 
