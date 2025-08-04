@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 .vercel
+link-tracker-dashboard/node_modules/
