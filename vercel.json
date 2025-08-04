@@ -20,8 +20,20 @@
       "dest": "/api/index.py"
     },
     {
+      "src": "/static/(.*)",
+      "dest": "/link-tracker-dashboard/static/$1"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/link-tracker-dashboard/assets/$1"
+    },
+    {
+      "src": "/7th_brain_logo.png",
+      "dest": "/link-tracker-dashboard/7th_brain_logo.png"
+    },
+    {
       "src": "/(.*)",
-      "dest": "/link-tracker-dashboard/$1"
+      "dest": "/link-tracker-dashboard/index.html"
     }
   ]
 }
