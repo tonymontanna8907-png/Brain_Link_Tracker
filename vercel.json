@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "link-tracker-dashboard/package.json",
+      "src": "package.json",
       "use": "@vercel/static-build",
       "config": {
         "distDir": "dist"
@@ -20,7 +20,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/link-tracker-dashboard/$1"
+      "dest": "/dist/index.html"
     }
   ]
 }
