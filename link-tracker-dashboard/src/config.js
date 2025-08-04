@@ -1,7 +1,7 @@
 // API Configuration
 export const API_BASE = process.env.NODE_ENV === 'production' 
   ? '/api' 
-  : 'http://localhost:5001/api';
+  : 'http://localhost:5000/api';
 
 export const API_ENDPOINTS = {
   AUTH: {

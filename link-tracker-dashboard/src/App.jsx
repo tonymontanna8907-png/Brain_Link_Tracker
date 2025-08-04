@@ -137,7 +137,7 @@ function App() {
                 <div className="flex items-center space-x-4">
                   <h2 className="text-2xl font-bold text-gray-800">Advanced Analytics</h2>
                   <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    Last updated: {analytics ? new Date().toLocaleTimeString() : 'Loading...'}
+                    Last updated: {analytics && analytics.last_updated ? new Date(analytics.last_updated).toLocaleTimeString() : 'Loading...'}
                   </Badge>
                 </div>
                 <div className="flex space-x-2">
@@ -149,7 +149,7 @@ function App() {
                     <Download className="h-4 w-4 mr-2" />
                     Export
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={() => alert('Settings functionality coming soon!')}>
                     <Settings className="h-4 w-4" />
                   </Button>
                 </div>
