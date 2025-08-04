@@ -23,6 +23,6 @@
       "src": "/(.*)",
       "dest": "/link-tracker-dashboard/$1"
     }
-  ],
+  ]
 }
 
