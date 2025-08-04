@@ -24,8 +24,5 @@
       "dest": "/link-tracker-dashboard/$1"
     }
   ],
-  "env": {
-    "DATABASE_URL": "$DATABASE_URL"
-  }
 }
 
