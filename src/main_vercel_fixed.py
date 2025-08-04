@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, session, redirect, url_for, render_template_string, send_from_directory
+from flask import Flask, request, jsonify, send_file, redirect, render_template_string, send_from_directory
 from flask_cors import CORS
 import os
 import hashlib
@@ -33,12 +33,12 @@ app = Flask(__name__, static_folder='static')
 CORS(app, origins="*")
 
 # Configuration
-SECRET_KEY = os.environ.get("SECRET_KEY", "your-default-secret-key-if-not-set")
-app.config["SECRET_KEY"] = SECRET_KEY
+SECRET_KEY = os.environ.get("SECRET_KEY", "ej5B3Amppi4gjpbC65te6rJuvJzgVCWW_xfB-ZLR1TE")
+app.config['SECRET_KEY'] = SECRET_KEY
 
 # Database configuration
 if DATABASE_TYPE == "postgresql":
-    DATABASE_URL = os.environ.get("DATABASE_URL")
+    DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_0y9XMKzHCBsN@ep-blue-resonance-add39g5q-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
 else:
     DATABASE_PATH = os.path.join(os.path.dirname(__file__), "database", "app.db")
 
@@ -64,7 +64,7 @@ def init_db():
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
                     role VARCHAR(50) NOT NULL DEFAULT 'member',
-                    status VARCHAR(50) NOT NULL DEFAULT 'active',
+                    status VARCHAR(50) NOT NULL DEFAULT 'pending',
                     parent_id INTEGER,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP WITH TIME ZONE,
@@ -114,7 +114,7 @@ def init_db():
                     id SERIAL PRIMARY KEY,
                     campaign_id INTEGER,
                     user_id INTEGER NOT NULL,
-                    original_url TEXT NOT NULL,
+                    original_url VARCHAR(2048) NOT NULL,
                     tracking_token VARCHAR(255) UNIQUE NOT NULL,
                     recipient_email VARCHAR(255),
                     recipient_name VARCHAR(255),
@@ -126,7 +126,7 @@ def init_db():
                     last_clicked TIMESTAMP WITH TIME ZONE,
                     custom_message TEXT,
                     redirect_delay INTEGER DEFAULT 0,
-                    password_protected BOOLEAN DEFAULT FALSE,
+                    password_protected INTEGER DEFAULT 0,
                     access_password VARCHAR(255),
                     geo_restrictions TEXT,
                     device_restrictions TEXT,
@@ -140,30 +140,29 @@ def init_db():
                 CREATE TABLE IF NOT EXISTS tracking_events (
                     id SERIAL PRIMARY KEY,
                     tracking_token VARCHAR(255) NOT NULL,
-                    event_type VARCHAR(100) NOT NULL,
-                    ip_address INET,
+                    event_type VARCHAR(50) NOT NULL,
+                    ip_address VARCHAR(45),
                     user_agent TEXT,
                     referrer TEXT,
-                    country VARCHAR(100),
-                    city VARCHAR(100),
-                    device_type VARCHAR(100),
+                    country VARCHAR(10),
+                    city VARCHAR(255),
+                    device_type VARCHAR(50),
                     browser VARCHAR(100),
                     os VARCHAR(100),
                     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    additional_data JSONB,
+                    additional_data TEXT,
                     campaign_id INTEGER,
                     user_id INTEGER,
-                    is_bot BOOLEAN DEFAULT FALSE,
-                    bot_confidence DECIMAL(3,2),
+                    is_bot INTEGER DEFAULT 0,
+                    bot_confidence REAL,
                     bot_reason TEXT,
                     status VARCHAR(50) DEFAULT 'processed',
                     FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
                     FOREIGN KEY (user_id) REFERENCES users (id)
                 );
             """)
-            
         else:
-            # SQLite table creation (for local development)
+            # SQLite table creation
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,25 +170,13 @@ def init_db():
                     email TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'member',
-                    status TEXT NOT NULL DEFAULT 'active',
+                    status TEXT NOT NULL DEFAULT 'pending',
                     parent_id INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP,
                     subscription_status TEXT DEFAULT 'inactive',
                     subscription_expires TIMESTAMP,
                     FOREIGN KEY (parent_id) REFERENCES users (id)
-                )
-            ''')
-            
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS user_permissions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    permission TEXT NOT NULL,
-                    granted_by INTEGER,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (user_id) REFERENCES users (id),
-                    FOREIGN KEY (granted_by) REFERENCES users (id)
                 )
             ''')
             
@@ -397,7 +384,7 @@ def login():
         
         if not username or not password:
             return jsonify({'error': 'Username and password required'}), 400
-            
+        
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -411,24 +398,23 @@ def login():
         if not user:
             cursor.close()
             conn.close()
-            return jsonify({"error": "Invalid credentials"}), 401
+            return jsonify({'error': 'Invalid credentials'}), 401
         
         user_id, username, password_hash, role, status = user
-        
-        # Check password using bcrypt
-        if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
-            cursor.close()
-            conn.close()
-            return jsonify({"error": "Invalid credentials"}), 401
         
         if status != 'active':
             cursor.close()
             conn.close()
-            return jsonify({"error": "Account is not active"}), 401
+            return jsonify({'error': 'Account not active'}), 401
         
-        # Create session token
+        if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Invalid credentials'}), 401
+        
+        # Create session
         session_token = secrets.token_urlsafe(32)
-        expires_at = datetime.utcnow() + timedelta(days=30)
+        expires_at = datetime.now() + timedelta(days=7)
         
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
@@ -436,75 +422,61 @@ def login():
                 VALUES (%s, %s, %s)
             """, (user_id, session_token, expires_at))
             
-            # Update last login
-            cursor.execute("""
-                UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = %s
-            """, (user_id,))
+            cursor.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = %s", (user_id,))
         else:
             cursor.execute("""
                 INSERT INTO user_sessions (user_id, session_token, expires_at)
                 VALUES (?, ?, ?)
             """, (user_id, session_token, expires_at))
             
-            # Update last login
-            cursor.execute("""
-                UPDATE users SET last_login = datetime('now') WHERE id = ?
-            """, (user_id,))
+            cursor.execute("UPDATE users SET last_login = datetime('now') WHERE id = ?", (user_id,))
         
         conn.commit()
         cursor.close()
         conn.close()
         
         return jsonify({
-            "message": "Login successful",
-            "user": {
-                "id": user_id,
-                "username": username,
-                "role": role,
-                "status": status
-            },
-            "session_token": session_token
-        }), 200
+            'message': 'Login successful',
+            'token': session_token,
+            'user': {
+                'id': user_id,
+                'username': username,
+                'role': role
+            }
+        })
         
     except Exception as e:
         print(f"Login error: {e}")
-        return jsonify({"error": "Login failed"}), 500
+        return jsonify({'error': 'Login failed'}), 500
 
 @app.route('/api/auth/logout', methods=['POST'])
+@require_auth
 def logout():
     """User logout endpoint"""
     try:
         session_token = request.headers.get('Authorization')
-        if session_token and session_token.startswith('Bearer '):
+        if session_token.startswith('Bearer '):
             session_token = session_token[7:]
         
-        if session_token:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            if DATABASE_TYPE == "postgresql":
-                cursor.execute("""
-                    UPDATE user_sessions 
-                    SET expires_at = CURRENT_TIMESTAMP 
-                    WHERE session_token = %s
-                """, (session_token,))
-            else:
-                cursor.execute("""
-                    UPDATE user_sessions 
-                    SET expires_at = datetime('now') 
-                    WHERE session_token = ?
-                """, (session_token,))
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        return jsonify({"message": "Logout successful"}), 200
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("DELETE FROM user_sessions WHERE session_token = %s", (session_token,))
+        else:
+            cursor.execute("DELETE FROM user_sessions WHERE session_token = ?", (session_token,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'Logout successful'})
         
     except Exception as e:
         print(f"Logout error: {e}")
-        return jsonify({"error": "Logout failed"}), 500
+        return jsonify({'error': 'Logout failed'}), 500
 
+# User management endpoints
 @app.route('/api/auth/register', methods=['POST'])
 def register():
     """User registration endpoint"""
@@ -515,7 +487,7 @@ def register():
         password = data.get('password')
         
         if not username or not email or not password:
-            return jsonify({'error': 'Username, email and password required'}), 400
+            return jsonify({'error': 'Username, email, and password required'}), 400
         
         # Hash password
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -528,59 +500,98 @@ def register():
                 cursor.execute("""
                     INSERT INTO users (username, email, password_hash, role, status)
                     VALUES (%s, %s, %s, %s, %s)
-                    RETURNING id
-                """, (username.lower(), email.lower(), password_hash, 'member', 'active'))
-                user_id = cursor.fetchone()[0]
+                """, (username, email, password_hash, "member", "pending"))
             else:
                 cursor.execute("""
                     INSERT INTO users (username, email, password_hash, role, status)
                     VALUES (?, ?, ?, ?, ?)
-                """, (username.lower(), email.lower(), password_hash, 'member', 'active'))
-                user_id = cursor.lastrowid
+                """, (username, email, password_hash, "member", "pending"))
             
             conn.commit()
             cursor.close()
             conn.close()
             
-            return jsonify({
-                "message": "Registration successful",
-                "user_id": user_id
-            }), 201
+            return jsonify({'message': 'Registration successful'})
             
         except Exception as e:
-            if "unique" in str(e).lower():
-                return jsonify({"error": "Username or email already exists"}), 400
+            cursor.close()
+            conn.close()
+            if 'UNIQUE constraint failed' in str(e) or 'duplicate key' in str(e):
+                return jsonify({'error': 'Username or email already exists'}), 400
             raise e
             
     except Exception as e:
         print(f"Registration error: {e}")
-        return jsonify({"error": "Registration failed"}), 500
+        return jsonify({'error': 'Registration failed'}), 500
+
+# User management endpoints
+@app.route('/api/users', methods=['GET'])
+@require_auth
+def get_users():
+    """Get all users (admin only)"""
+    try:
+        if request.current_user['role'] != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                SELECT id, username, email, role, status, created_at, last_login
+                FROM users ORDER BY created_at DESC
+            """)
+        else:
+            cursor.execute("""
+                SELECT id, username, email, role, status, created_at, last_login
+                FROM users ORDER BY created_at DESC
+            """)
+        
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        user_list = []
+        for user in users:
+            user_list.append({
+                'id': user[0],
+                'username': user[1],
+                'email': user[2],
+                'role': user[3],
+                'status': user[4],
+                'created_at': user[5],
+                'last_login': user[6]
+            })
+        
+        return jsonify(user_list)
+        
+    except Exception as e:
+        print(f"Get users error: {e}")
+        return jsonify({'error': 'Failed to fetch users'}), 500
 
 # Campaign management endpoints
 @app.route('/api/campaigns', methods=['GET'])
 @require_auth
 def get_campaigns():
-    """Get user campaigns"""
+    """Get campaigns for current user"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        user_id = request.current_user['id']
-        
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
                 SELECT id, name, description, status, created_at
-                FROM campaigns 
+                FROM campaigns
                 WHERE user_id = %s
                 ORDER BY created_at DESC
-            """, (user_id,))
+            """, (request.current_user['id'],))
         else:
             cursor.execute("""
                 SELECT id, name, description, status, created_at
-                FROM campaigns 
+                FROM campaigns
                 WHERE user_id = ?
                 ORDER BY created_at DESC
-            """, (user_id,))
+            """, (request.current_user['id'],))
         
         campaigns = []
         for row in cursor.fetchall():
@@ -594,17 +605,16 @@ def get_campaigns():
         
         cursor.close()
         conn.close()
-        
-        return jsonify({"campaigns": campaigns}), 200
+        return jsonify({'campaigns': campaigns})
         
     except Exception as e:
         print(f"Get campaigns error: {e}")
-        return jsonify({"error": "Failed to get campaigns"}), 500
+        return jsonify({'error': 'Failed to fetch campaigns'}), 500
 
 @app.route('/api/campaigns', methods=['POST'])
 @require_auth
 def create_campaign():
-    """Create new campaign"""
+    """Create a new campaign"""
     try:
         data = request.get_json()
         name = data.get('name')
@@ -616,129 +626,151 @@ def create_campaign():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        user_id = request.current_user['id']
-        
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
                 INSERT INTO campaigns (name, description, user_id)
                 VALUES (%s, %s, %s)
-                RETURNING id
-            """, (name, description, user_id))
-            campaign_id = cursor.fetchone()[0]
+                RETURNING id, created_at
+            """, (name, description, request.current_user['id']))
+            result = cursor.fetchone()
+            campaign_id = result[0]
+            created_at = result[1]
         else:
             cursor.execute("""
                 INSERT INTO campaigns (name, description, user_id)
                 VALUES (?, ?, ?)
-            """, (name, description, user_id))
+            """, (name, description, request.current_user['id']))
             campaign_id = cursor.lastrowid
+            cursor.execute("SELECT created_at FROM campaigns WHERE id = ?", (campaign_id,))
+            created_at = cursor.fetchone()[0]
         
         conn.commit()
         cursor.close()
         conn.close()
         
         return jsonify({
-            "message": "Campaign created successfully",
-            "campaign_id": campaign_id
+            'message': 'Campaign created successfully',
+            'campaign': {
+                'id': campaign_id,
+                'name': name,
+                'description': description,
+                'status': 'active',
+                'created_at': created_at.isoformat() if created_at else None
+            }
         }), 201
         
     except Exception as e:
         print(f"Create campaign error: {e}")
-        return jsonify({"error": "Failed to create campaign"}), 500
+        return jsonify({'error': 'Failed to create campaign'}), 500
 
-# Tracking link management endpoints
+# Tracking link generation endpoints
 @app.route('/api/tracking-links', methods=['POST'])
 @require_auth
 def create_tracking_link():
-    """Create new tracking link"""
+    """Create a new tracking link"""
     try:
         data = request.get_json()
-        original_url = data.get('original_url')
         campaign_id = data.get('campaign_id')
+        original_url = data.get('original_url')
         recipient_email = data.get('recipient_email', '')
         recipient_name = data.get('recipient_name', '')
         
         if not original_url:
             return jsonify({'error': 'Original URL is required'}), 400
         
-        # Generate tracking token
+        # Generate unique tracking token
         tracking_token = secrets.token_urlsafe(16)
         
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        user_id = request.current_user['id']
-        
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
                 INSERT INTO tracking_links (campaign_id, user_id, original_url, tracking_token, recipient_email, recipient_name)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id
-            """, (campaign_id, user_id, original_url, tracking_token, recipient_email, recipient_name))
-            link_id = cursor.fetchone()[0]
+                RETURNING id, created_at
+            """, (campaign_id, request.current_user['id'], original_url, tracking_token, recipient_email, recipient_name))
+            result = cursor.fetchone()
+            link_id = result[0]
+            created_at = result[1]
         else:
             cursor.execute("""
                 INSERT INTO tracking_links (campaign_id, user_id, original_url, tracking_token, recipient_email, recipient_name)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (campaign_id, user_id, original_url, tracking_token, recipient_email, recipient_name))
+            """, (campaign_id, request.current_user['id'], original_url, tracking_token, recipient_email, recipient_name))
             link_id = cursor.lastrowid
+            cursor.execute("SELECT created_at FROM tracking_links WHERE id = ?", (link_id,))
+            created_at = cursor.fetchone()[0]
         
         conn.commit()
         cursor.close()
         conn.close()
         
-        # Generate tracking URL
-        tracking_url = f"{request.host_url}t/{tracking_token}"
+        # Generate tracking URLs
+        base_url = request.host_url.rstrip('/')
+        tracking_url = f"{base_url}/track/click/{tracking_token}"
+        pixel_url = f"{base_url}/track/pixel/{tracking_token}"
         
         return jsonify({
-            "message": "Tracking link created successfully",
-            "link_id": link_id,
-            "tracking_token": tracking_token,
-            "tracking_url": tracking_url
+            'message': 'Tracking link created successfully',
+            'tracking_link': {
+                'id': link_id,
+                'tracking_token': tracking_token,
+                'original_url': original_url,
+                'tracking_url': tracking_url,
+                'pixel_url': pixel_url,
+                'recipient_email': recipient_email,
+                'recipient_name': recipient_name,
+                'created_at': created_at.isoformat() if created_at else None
+            }
         }), 201
         
     except Exception as e:
         print(f"Create tracking link error: {e}")
-        return jsonify({"error": "Failed to create tracking link"}), 500
+        return jsonify({'error': 'Failed to create tracking link'}), 500
 
 @app.route('/api/tracking-links', methods=['GET'])
 @require_auth
 def get_tracking_links():
-    """Get user tracking links"""
+    """Get tracking links for current user"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        user_id = request.current_user['id']
-        
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
-                SELECT tl.id, tl.original_url, tl.tracking_token, tl.recipient_email, 
+                SELECT tl.id, tl.tracking_token, tl.original_url, tl.recipient_email, 
                        tl.recipient_name, tl.link_status, tl.created_at, tl.click_count,
                        c.name as campaign_name
                 FROM tracking_links tl
                 LEFT JOIN campaigns c ON tl.campaign_id = c.id
                 WHERE tl.user_id = %s
                 ORDER BY tl.created_at DESC
-            """, (user_id,))
+            """, (request.current_user['id'],))
         else:
             cursor.execute("""
-                SELECT tl.id, tl.original_url, tl.tracking_token, tl.recipient_email, 
+                SELECT tl.id, tl.tracking_token, tl.original_url, tl.recipient_email, 
                        tl.recipient_name, tl.link_status, tl.created_at, tl.click_count,
                        c.name as campaign_name
                 FROM tracking_links tl
                 LEFT JOIN campaigns c ON tl.campaign_id = c.id
                 WHERE tl.user_id = ?
                 ORDER BY tl.created_at DESC
-            """, (user_id,))
+            """, (request.current_user['id'],))
         
         links = []
+        base_url = request.host_url.rstrip('/')
+        
         for row in cursor.fetchall():
-            tracking_url = f"{request.host_url}t/{row[2]}"
+            tracking_url = f"{base_url}/track/click/{row[1]}"
+            pixel_url = f"{base_url}/track/pixel/{row[1]}"
+            
             links.append({
                 'id': row[0],
-                'original_url': row[1],
-                'tracking_token': row[2],
+                'tracking_token': row[1],
+                'original_url': row[2],
                 'tracking_url': tracking_url,
+                'pixel_url': pixel_url,
                 'recipient_email': row[3],
                 'recipient_name': row[4],
                 'link_status': row[5],
@@ -749,94 +781,142 @@ def get_tracking_links():
         
         cursor.close()
         conn.close()
-        
-        return jsonify({"tracking_links": links}), 200
+        return jsonify({'tracking_links': links})
         
     except Exception as e:
         print(f"Get tracking links error: {e}")
-        return jsonify({"error": "Failed to get tracking links"}), 500
+        return jsonify({'error': 'Failed to fetch tracking links'}), 500
 
-# Tracking redirect endpoint
-@app.route('/t/<tracking_token>')
-def track_and_redirect(tracking_token):
-    """Track click and redirect to original URL"""
+# Generate tracking pixel (1x1 transparent PNG)
+def generate_pixel():
+    # 1x1 transparent PNG in base64
+    pixel_data = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==')
+    return pixel_data
+
+# Tracking endpoints
+@app.route('/track/pixel/<tracking_token>')
+def track_pixel(tracking_token):
+    """Track email open via pixel"""
+    try:
+        # Log the tracking event
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get tracking link info
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                SELECT tl.campaign_id, tl.user_id, tl.original_url
+                FROM tracking_links tl
+                WHERE tl.tracking_token = %s
+            """, (tracking_token,))
+        else:
+            cursor.execute("""
+                SELECT tl.campaign_id, tl.user_id, tl.original_url
+                FROM tracking_links tl
+                WHERE tl.tracking_token = ?
+            """, (tracking_token,))
+        
+        link_info = cursor.fetchone()
+        
+        if link_info:
+            campaign_id, user_id, original_url = link_info
+            
+            # Log tracking event
+            user_agent = request.headers.get('User-Agent', '')
+            ip_address = request.remote_addr
+            
+            if DATABASE_TYPE == "postgresql":
+                cursor.execute("""
+                    INSERT INTO tracking_events (tracking_token, event_type, ip_address, user_agent, campaign_id, user_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (tracking_token, 'pixel_view', ip_address, user_agent, campaign_id, user_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO tracking_events (tracking_token, event_type, ip_address, user_agent, campaign_id, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (tracking_token, 'pixel_view', ip_address, user_agent, campaign_id, user_id))
+            
+            conn.commit()
+        
+        cursor.close()
+        conn.close()
+        
+        # Return 1x1 transparent pixel
+        pixel_data = generate_pixel()
+        return send_file(
+            io.BytesIO(pixel_data),
+            mimetype='image/png',
+            as_attachment=False
+        )
+        
+    except Exception as e:
+        print(f"Pixel tracking error: {e}")
+        # Still return pixel even if tracking fails
+        pixel_data = generate_pixel()
+        return send_file(
+            io.BytesIO(pixel_data),
+            mimetype='image/png',
+            as_attachment=False
+        )
+
+@app.route('/track/click/<tracking_token>')
+def track_click(tracking_token):
+    """Track link click and redirect"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get tracking link
+        # Get tracking link info
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
-                SELECT id, original_url, click_count, campaign_id, user_id, link_status
-                FROM tracking_links 
+                SELECT tl.campaign_id, tl.user_id, tl.original_url, tl.click_count
+                FROM tracking_links tl
+                WHERE tl.tracking_token = %s
+            """, (tracking_token,))
+        else:
+            cursor.execute("""
+                SELECT tl.campaign_id, tl.user_id, tl.original_url, tl.click_count
+                FROM tracking_links tl
+                WHERE tl.tracking_token = ?
+            """, (tracking_token,))
+        
+        link_info = cursor.fetchone()
+        
+        if not link_info:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Tracking link not found'}), 404
+        
+        campaign_id, user_id, original_url, click_count = link_info
+        
+        # Log tracking event
+        user_agent = request.headers.get('User-Agent', '')
+        ip_address = request.remote_addr
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                INSERT INTO tracking_events (tracking_token, event_type, ip_address, user_agent, campaign_id, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (tracking_token, 'click', ip_address, user_agent, campaign_id, user_id))
+            
+            # Update click count
+            cursor.execute("""
+                UPDATE tracking_links 
+                SET click_count = COALESCE(click_count, 0) + 1, last_clicked = CURRENT_TIMESTAMP
                 WHERE tracking_token = %s
             """, (tracking_token,))
         else:
             cursor.execute("""
-                SELECT id, original_url, click_count, campaign_id, user_id, link_status
-                FROM tracking_links 
+                INSERT INTO tracking_events (tracking_token, event_type, ip_address, user_agent, campaign_id, user_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (tracking_token, 'click', ip_address, user_agent, campaign_id, user_id))
+            
+            # Update click count
+            cursor.execute("""
+                UPDATE tracking_links 
+                SET click_count = COALESCE(click_count, 0) + 1, last_clicked = datetime('now')
                 WHERE tracking_token = ?
             """, (tracking_token,))
-        
-        link = cursor.fetchone()
-        
-        if not link:
-            cursor.close()
-            conn.close()
-            return "Link not found", 404
-        
-        link_id, original_url, click_count, campaign_id, user_id, link_status = link
-        
-        if link_status != 'active':
-            cursor.close()
-            conn.close()
-            return "Link is no longer active", 410
-        
-        # Get client info
-        ip_address = request.environ.get('HTTP_X_FORWARDED_FOR', request.environ.get('REMOTE_ADDR', ''))
-        user_agent = request.headers.get('User-Agent', '')
-        referrer = request.headers.get('Referer', '')
-        
-        # Parse user agent
-        try:
-            ua = parse(user_agent)
-            device_type = 'mobile' if ua.is_mobile else 'tablet' if ua.is_tablet else 'desktop'
-            browser = ua.browser.family
-            os = ua.os.family
-        except:
-            device_type = 'unknown'
-            browser = 'unknown'
-            os = 'unknown'
-        
-        # Record tracking event
-        if DATABASE_TYPE == "postgresql":
-            cursor.execute("""
-                INSERT INTO tracking_events (tracking_token, event_type, ip_address, user_agent, 
-                                           referrer, device_type, browser, os, campaign_id, user_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (tracking_token, 'click', ip_address, user_agent, referrer, 
-                  device_type, browser, os, campaign_id, user_id))
-            
-            # Update click count and last clicked
-            cursor.execute("""
-                UPDATE tracking_links 
-                SET click_count = click_count + 1, last_clicked = CURRENT_TIMESTAMP
-                WHERE id = %s
-            """, (link_id,))
-        else:
-            cursor.execute("""
-                INSERT INTO tracking_events (tracking_token, event_type, ip_address, user_agent, 
-                                           referrer, device_type, browser, os, campaign_id, user_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (tracking_token, 'click', ip_address, user_agent, referrer, 
-                  device_type, browser, os, campaign_id, user_id))
-            
-            # Update click count and last clicked
-            cursor.execute("""
-                UPDATE tracking_links 
-                SET click_count = click_count + 1, last_clicked = datetime('now')
-                WHERE id = ?
-            """, (link_id,))
         
         conn.commit()
         cursor.close()
@@ -846,14 +926,14 @@ def track_and_redirect(tracking_token):
         return redirect(original_url)
         
     except Exception as e:
-        print(f"Tracking error: {e}")
-        return "Tracking error", 500
+        print(f"Click tracking error: {e}")
+        return jsonify({'error': 'Tracking failed'}), 500
 
 # Analytics endpoints
-@app.route('/api/analytics/dashboard', methods=['GET'])
+@app.route('/api/analytics/overview')
 @require_auth
-def get_dashboard_analytics():
-    """Get dashboard analytics"""
+def get_analytics_overview():
+    """Get analytics overview for current user"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -876,125 +956,55 @@ def get_dashboard_analytics():
         
         # Get total clicks
         if DATABASE_TYPE == "postgresql":
-            cursor.execute("SELECT COALESCE(SUM(click_count), 0) FROM tracking_links WHERE user_id = %s", (user_id,))
+            cursor.execute("""
+                SELECT COUNT(*) FROM tracking_events 
+                WHERE user_id = %s AND event_type = 'click'
+            """, (user_id,))
         else:
-            cursor.execute("SELECT COALESCE(SUM(click_count), 0) FROM tracking_links WHERE user_id = ?", (user_id,))
+            cursor.execute("""
+                SELECT COUNT(*) FROM tracking_events 
+                WHERE user_id = ? AND event_type = 'click'
+            """, (user_id,))
         total_clicks = cursor.fetchone()[0]
         
-        # Get recent events
+        # Get total pixel views
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
                 SELECT COUNT(*) FROM tracking_events 
-                WHERE user_id = %s AND timestamp >= CURRENT_TIMESTAMP - INTERVAL '7 days'
+                WHERE user_id = %s AND event_type = 'pixel_view'
             """, (user_id,))
         else:
             cursor.execute("""
                 SELECT COUNT(*) FROM tracking_events 
-                WHERE user_id = ? AND timestamp >= datetime('now', '-7 days')
+                WHERE user_id = ? AND event_type = 'pixel_view'
             """, (user_id,))
-        recent_events = cursor.fetchone()[0]
+        total_pixel_views = cursor.fetchone()[0]
         
         cursor.close()
         conn.close()
         
         return jsonify({
-            "total_campaigns": total_campaigns,
-            "total_links": total_links,
-            "total_clicks": total_clicks,
-            "recent_events": recent_events
-        }), 200
+            'total_campaigns': total_campaigns,
+            'total_links': total_links,
+            'total_clicks': total_clicks,
+            'total_pixel_views': total_pixel_views
+        })
         
     except Exception as e:
-        print(f"Analytics error: {e}")
-        return jsonify({"error": "Failed to get analytics"}), 500
+        print(f"Analytics overview error: {e}")
+        return jsonify({'error': 'Failed to fetch analytics'}), 500
 
-# Admin endpoints
-@app.route('/api/admin/users', methods=['GET'])
-@require_auth
-def get_all_users():
-    """Get all users (admin only)"""
-    try:
-        if request.current_user['role'] != 'admin':
-            return jsonify({"error": "Admin access required"}), 403
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        if DATABASE_TYPE == "postgresql":
-            cursor.execute("""
-                SELECT id, username, email, role, status, created_at, last_login
-                FROM users 
-                ORDER BY created_at DESC
-            """)
-        else:
-            cursor.execute("""
-                SELECT id, username, email, role, status, created_at, last_login
-                FROM users 
-                ORDER BY created_at DESC
-            """)
-        
-        users = []
-        for row in cursor.fetchall():
-            users.append({
-                'id': row[0],
-                'username': row[1],
-                'email': row[2],
-                'role': row[3],
-                'status': row[4],
-                'created_at': row[5].isoformat() if row[5] else None,
-                'last_login': row[6].isoformat() if row[6] else None
-            })
-        
-        cursor.close()
-        conn.close()
-        
-        return jsonify({"users": users}), 200
-        
-    except Exception as e:
-        print(f"Get users error: {e}")
-        return jsonify({"error": "Failed to get users"}), 500
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return send_from_directory(app.static_folder, 'index.html')
 
-@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
-@require_auth
-def update_user(user_id):
-    """Update user (admin only)"""
-    try:
-        if request.current_user['role'] != 'admin':
-            return jsonify({"error": "Admin access required"}), 403
-        
-        data = request.get_json()
-        role = data.get('role')
-        status = data.get('status')
-        
-        if not role or not status:
-            return jsonify({'error': 'Role and status are required'}), 400
-        
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        if DATABASE_TYPE == "postgresql":
-            cursor.execute("""
-                UPDATE users SET role = %s, status = %s WHERE id = %s
-            """, (role, status, user_id))
-        else:
-            cursor.execute("""
-                UPDATE users SET role = ?, status = ? WHERE id = ?
-            """, (role, status, user_id))
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        
-        return jsonify({"message": "User updated successfully"}), 200
-        
-    except Exception as e:
-        print(f"Update user error: {e}")
-        return jsonify({"error": "Failed to update user"}), 500
-
-# Initialize database on startup
-with app.app_context():
-    init_db()
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
+    init_db()
+    print(f"✅ Brain Link Tracker starting with {DATABASE_TYPE} database...")
     app.run(host='0.0.0.0', port=5000, debug=True)
 

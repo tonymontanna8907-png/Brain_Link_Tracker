@@ -4,7 +4,7 @@ import os
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from main_vercel import app, init_db, get_db_connection, DATABASE_TYPE
+from main_vercel_fixed import app, init_db, get_db_connection, DATABASE_TYPE
 import bcrypt
 
 # Initialize the database when the module is imported
