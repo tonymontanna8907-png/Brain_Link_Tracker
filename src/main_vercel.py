@@ -34,12 +34,12 @@ app = Flask(__name__, static_folder='static')
 CORS(app, origins="*")
 
 # Configuration
-SECRET_KEY = "7th-brain-advanced-link-tracker-secret-2024"
-app.config['SECRET_KEY'] = SECRET_KEY
+SECRET_KEY = os.environ.get("SECRET_KEY", "your-default-secret-key-if-not-set")
+app.config["SECRET_KEY"] = SECRET_KEY
 
 # Database configuration
 if DATABASE_TYPE == "postgresql":
-    DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://neondb_owner:npg_WMUsnaL7o3Zp@ep-noisy-recipe-ady497ac-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require")
+    DATABASE_URL = os.environ.get("DATABASE_URL")
 else:
     DATABASE_PATH = os.path.join(os.path.dirname(__file__), "database", "app.db")
 
@@ -53,7 +53,7 @@ def get_db_connection():
 # Initialize database
 def init_db():
     try:
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         if DATABASE_TYPE == "postgresql":
@@ -317,7 +317,7 @@ def require_auth(f):
             session_token = session_token[7:]
         
         try:
-            conn = get_db_connection()
+            conn = current_app.get_db_connection()
             cursor = conn.cursor()
             
             if DATABASE_TYPE == "postgresql":
@@ -399,7 +399,7 @@ def login():
         if not username or not password:
             return jsonify({'error': 'Username and password required'}), 400
         
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         if DATABASE_TYPE == "postgresql":
@@ -472,7 +472,7 @@ def logout():
         if session_token.startswith('Bearer '):
             session_token = session_token[7:]
         
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         if DATABASE_TYPE == "postgresql":
@@ -506,7 +506,7 @@ def register():
         # Hash password
         password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         try:
@@ -562,7 +562,7 @@ def get_users():
         if request.current_user['role'] != 'admin':
             return jsonify({'error': 'Admin access required'}), 403
         
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         if DATABASE_TYPE == "postgresql":
@@ -606,7 +606,7 @@ def approve_user(user_id):
         if request.current_user['role'] != 'admin':
             return jsonify({'error': 'Admin access required'}), 403
         
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         if DATABASE_TYPE == "postgresql":
@@ -632,7 +632,7 @@ def reject_user(user_id):
         if request.current_user['role'] != 'admin':
             return jsonify({'error': 'Admin access required'}), 403
         
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         if DATABASE_TYPE == "postgresql":
@@ -658,7 +658,7 @@ def delete_user(user_id):
         if request.current_user['role'] != 'admin':
             return jsonify({'error': 'Admin access required'}), 403
         
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         if DATABASE_TYPE == "postgresql":
@@ -681,7 +681,7 @@ def delete_user(user_id):
 def get_analytics():
     """Get analytics data"""
     try:
-        conn = get_db_connection()
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         # Get user counts

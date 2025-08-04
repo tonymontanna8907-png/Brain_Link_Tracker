@@ -114,8 +114,7 @@ def record_tracking_event(token, event_type, ip_address, user_agent,
             browser = f"{ua.browser.family} {ua.browser.version_string}" if ua.browser.family else 'Unknown'
         
         # Get database connection (using SQLite for now)
-        DATABASE_PATH = "database/app.db"
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         # Insert tracking event
@@ -287,8 +286,7 @@ def track_click(token):
             return "Access Denied", 403
         
         # Get original URL
-        DATABASE_PATH = "database/app.db"
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT original_url FROM tracking_links WHERE tracking_token = ? AND is_active = 1", (token,))
         result = cursor.fetchone()
@@ -341,8 +339,7 @@ def track_click(token):
 def get_grabbed_emails(token):
     """Get auto-grabbed emails for a tracking token"""
     try:
-        DATABASE_PATH = "database/app.db"
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         # Get tracking link and verify ownership
@@ -395,8 +392,7 @@ def get_grabbed_emails(token):
 def get_email_analytics():
     """Get email analytics for user's campaigns"""
     try:
-        DATABASE_PATH = "database/app.db"
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         # Get all auto-grabbed emails for user's campaigns
@@ -464,8 +460,7 @@ def get_email_analytics():
 def export_grabbed_emails():
     """Export grabbed emails as CSV"""
     try:
-        DATABASE_PATH = "database/app.db"
-        conn = sqlite3.connect(DATABASE_PATH)
+        conn = current_app.get_db_connection()
         cursor = conn.cursor()
         
         # Get all auto-grabbed emails for user's campaigns

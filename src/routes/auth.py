@@ -1,7 +1,5 @@
 from flask import Blueprint, request, jsonify, session, current_app
-from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import check_password_hash
-from models.user import User, LoginSession, AuditLog, db
 from datetime import datetime, timedelta
 import secrets
 import re
@@ -108,49 +106,57 @@ def register():
         if User.query.filter_by(email=email).first():
             return jsonify({'error': 'Email already registered'}), 400
         
-        # Create new user
-        user = User(
-            username=username,
-            email=email,
-            first_name=data.get('first_name', '').strip(),
-            last_name=data.get('last_name', '').strip(),
-            company=data.get('company', '').strip(),
-            phone=data.get('phone', '').strip(),
-            timezone=data.get('timezone', 'UTC')
-        )
-        user.set_password(password)
-        
-        # Generate email verification token
-        verification_token = user.generate_email_verification_token()
-        
-        db.session.add(user)
-        db.session.commit()
-        
-        # Send verification email
-        verification_link = f"{request.host_url}auth/verify-email?token={verification_token}"
-        email_body = f"""
-        Welcome to 7th Brain Link Tracker!
-        
-        Please verify your email address by clicking the link below:
-        {verification_link}
-        
-        This link will expire in 24 hours.
-        
-        If you didn't create this account, please ignore this email.
-        """
-        
-        send_email(email, "Verify your 7th Brain account", email_body)
-        
-        # Log registration
-        log_audit_event('user_registered', user.id, 'user', str(user.id), {
-            'username': username,
-            'email': email
-        })
-        
-        return jsonify({
-            'message': 'Registration successful. Please check your email to verify your account.',
-            'user_id': user.id
-        }), 201
+        conn = current_app.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "INSERT INTO users (username, email, password_hash, first_name, last_name, company, phone, timezone) VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id, email",
+                (username, email, user.password_hash, data.get("first_name", "").strip(),
+                 data.get("last_name", "").strip(), data.get("company", "").strip(),
+                 data.get("phone", "").strip(), data.get("timezone", "UTC"))
+            )
+            new_user_id, new_user_email = cursor.fetchone()
+            conn.commit()
+
+            # Generate email verification token
+            verification_token = user.generate_email_verification_token()
+            # Update the user with the verification token in the database
+            cursor.execute(
+                "UPDATE users SET email_verification_token = %s, email_verification_sent_at = %s WHERE id = %s",
+                (verification_token, datetime.utcnow(), new_user_id)
+            )
+            conn.commit()
+
+            # Send verification email
+            verification_link = f"{request.host_url}auth/verify-email?token={verification_token}"
+            email_body = f"""
+            Welcome to 7th Brain Link Tracker!
+
+            Please verify your email address by clicking the link below:
+            {verification_link}
+
+            This link will expire in 24 hours.
+
+            If you didn't create this account, please ignore this email.
+            """
+
+            send_email(new_user_email, "Verify your 7th Brain account", email_body)
+
+            # Log registration
+            log_audit_event("user_registered", new_user_id, "user", str(new_user_id), {
+                "username": username,
+                "email": email
+            })
+
+            return jsonify({
+                "message": "Registration successful. Please check your email to verify your account.",
+                "user_id": new_user_id
+            }), 201
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            conn.close()
         
     except Exception as e:
         db.session.rollback()
@@ -168,137 +174,128 @@ def login():
         username = data['username'].strip().lower()
         password = data['password']
         
+    conn = current_app.get_db_connection()
+    cursor = conn.cursor()
+    try:
         # Find user by username or email
-        user = User.query.filter(
-            (User.username == username) | (User.email == username)
-        ).first()
-        
-        if not user:
-            log_audit_event('login_failed', None, 'auth', None, {
-                'username': username,
-                'reason': 'user_not_found'
-            })
-            return jsonify({'error': 'Invalid credentials'}), 401
-        
+        cursor.execute(
+            "SELECT id, username, password_hash, role, status, failed_login_attempts, locked_until, two_factor_enabled, totp_secret, backup_codes FROM users WHERE username = %s OR email = %s",
+            (username, username)
+        )
+        user_data = cursor.fetchone()
+
+        if not user_data:
+            log_audit_event("login_failed", None, "auth", None, {"username": username, "reason": "user_not_found"})
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        user_id, db_username, password_hash, role, status, failed_login_attempts, locked_until, two_factor_enabled, totp_secret, backup_codes = user_data
+
         # Check if account is locked
-        if user.is_account_locked():
-            log_audit_event('login_blocked', user.id, 'auth', None, {
-                'reason': 'account_locked'
-            })
-            return jsonify({'error': 'Account is temporarily locked due to multiple failed login attempts'}), 423
-        
+        if locked_until and datetime.utcnow() < locked_until:
+            log_audit_event("login_blocked", user_id, "auth", None, {"reason": "account_locked"})
+            return jsonify({"error": "Account is temporarily locked due to multiple failed login attempts"}), 423
+
         # Check if account is active
-        if not user.is_active:
-            log_audit_event('login_blocked', user.id, 'auth', None, {
-                'reason': 'account_inactive'
-            })
-            return jsonify({'error': 'Account is deactivated'}), 403
-        
+        if status != "active":
+            log_audit_event("login_blocked", user_id, "auth", None, {"reason": "account_inactive"})
+            return jsonify({"error": "Account is deactivated"}), 403
+
         # Verify password
-        if not user.check_password(password):
-            user.failed_login_attempts += 1
-            
-            # Lock account after 5 failed attempts
-            if user.failed_login_attempts >= 5:
-                user.lock_account(30)  # Lock for 30 minutes
-                db.session.commit()
-                
-                log_audit_event('account_locked', user.id, 'auth', None, {
-                    'reason': 'too_many_failed_attempts'
-                })
-                return jsonify({'error': 'Account locked due to too many failed login attempts'}), 423
-            
-            db.session.commit()
-            log_audit_event('login_failed', user.id, 'auth', None, {
-                'reason': 'invalid_password',
-                'failed_attempts': user.failed_login_attempts
-            })
-            return jsonify({'error': 'Invalid credentials'}), 401
-        
+        if not check_password_hash(password_hash, password):
+            failed_login_attempts += 1
+            if failed_login_attempts >= 5:
+                locked_until = datetime.utcnow() + timedelta(minutes=30)
+                cursor.execute("UPDATE users SET failed_login_attempts = %s, locked_until = %s WHERE id = %s",
+                               (failed_login_attempts, locked_until, user_id))
+                conn.commit()
+                log_audit_event("account_locked", user_id, "auth", None, {"reason": "too_many_failed_attempts"})
+                return jsonify({"error": "Account locked due to too many failed login attempts"}), 423
+            cursor.execute("UPDATE users SET failed_login_attempts = %s WHERE id = %s", (failed_login_attempts, user_id))
+            conn.commit()
+            log_audit_event("login_failed", user_id, "auth", None, {"reason": "invalid_password", "failed_attempts": failed_login_attempts})
+            return jsonify({"error": "Invalid credentials"}), 401
+
         # Check if 2FA is enabled
-        if user.two_factor_enabled:
-            totp_token = data.get('totp_token')
-            backup_code = data.get('backup_code')
-            
+        if two_factor_enabled:
+            totp_token = data.get("totp_token")
+            backup_code = data.get("backup_code")
+
             if not totp_token and not backup_code:
-                return jsonify({
-                    'requires_2fa': True,
-                    'message': 'Two-factor authentication required'
-                }), 200
-            
-            # Verify 2FA
-            if totp_token and not user.verify_totp(totp_token):
-                log_audit_event('2fa_failed', user.id, 'auth', None, {
-                    'method': 'totp'
-                })
-                return jsonify({'error': 'Invalid 2FA code'}), 401
-            
-            if backup_code and not user.use_backup_code(backup_code):
-                log_audit_event('2fa_failed', user.id, 'auth', None, {
-                    'method': 'backup_code'
-                })
-                return jsonify({'error': 'Invalid backup code'}), 401
-        
+                return jsonify({"requires_2fa": True, "message": "Two-factor authentication required"}), 200
+
+            import pyotp
+            totp = pyotp.TOTP(totp_secret)
+
+            if totp_token and not totp.verify(totp_token, valid_window=1):
+                log_audit_event("2fa_failed", user_id, "auth", None, {"method": "totp"})
+                return jsonify({"error": "Invalid 2FA code"}), 401
+
+            if backup_code:
+                codes = json.loads(backup_codes) if backup_codes else []
+                if backup_code.upper() not in codes:
+                    log_audit_event("2fa_failed", user_id, "auth", None, {"method": "backup_code"})
+                    return jsonify({"error": "Invalid backup code"}), 401
+                codes.remove(backup_code.upper())
+                cursor.execute("UPDATE users SET backup_codes = %s WHERE id = %s", (json.dumps(codes), user_id))
+                conn.commit()
+
         # Successful login
         ip_address = get_client_ip()
-        user.record_login(ip_address)
-        
+        cursor.execute("UPDATE users SET last_login = %s, last_login_ip = %s, failed_login_attempts = 0, locked_until = NULL WHERE id = %s",
+                       (datetime.utcnow(), ip_address, user_id))
+
         # Create login session
-        login_session = LoginSession(
-            user_id=user.id,
-            ip_address=ip_address,
-            user_agent=get_user_agent()
-        )
-        
-        db.session.add(login_session)
-        db.session.commit()
-        
-        # Flask-Login
-        login_user(user, remember=data.get('remember_me', False))
-        
-        # Store session token
-        session['session_token'] = login_session.session_token
-        
-        log_audit_event('login_successful', user.id, 'auth', None, {
-            'ip_address': ip_address,
-            'session_id': login_session.id
-        })
-        
+        session_token = secrets.token_urlsafe(32)
+        expires_at = datetime.utcnow() + timedelta(days=30)
+        cursor.execute("INSERT INTO user_sessions (user_id, session_token, expires_at, ip_address, user_agent) VALUES (%s, %s, %s, %s, %s) RETURNING id",
+                       (user_id, session_token, expires_at, ip_address, get_user_agent()))
+        login_session_id = cursor.fetchone()[0]
+        conn.commit()
+
+        log_audit_event("login_successful", user_id, "auth", None, {"ip_address": ip_address, "session_id": login_session_id})
+
         return jsonify({
-            'message': 'Login successful',
-            'user': user.to_dict(),
-            'session_token': login_session.session_token
+            "message": "Login successful",
+            "user": {"id": user_id, "username": db_username, "role": role, "status": status},
+            "session_token": session_token
         }), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()}), 500
+    finally:
+        conn.close()
         
     except Exception as e:
         return jsonify({'error': 'Login failed'}), 500
 
-@auth_bp.route('/logout', methods=['POST'])
-@login_required
+@auth_bp.route("/logout", methods=["POST"])
 def logout():
     """Logout and invalidate session"""
     try:
-        session_token = session.get('session_token')
-        
+        session_token = request.headers.get("Authorization")
+        if session_token and session_token.startswith("Bearer "):
+            session_token = session_token[7:]
+
         if session_token:
-            login_session = LoginSession.query.filter_by(
-                session_token=session_token,
-                user_id=current_user.id
-            ).first()
-            
-            if login_session:
-                login_session.is_active = False
-                db.session.commit()
-        
-        log_audit_event('logout', current_user.id, 'auth', None)
-        
-        logout_user()
-        session.clear()
-        
-        return jsonify({'message': 'Logout successful'}), 200
-        
+            conn = current_app.get_db_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute("UPDATE user_sessions SET expires_at = %s WHERE session_token = %s",
+                               (datetime.utcnow(), session_token))
+                conn.commit()
+                log_audit_event("logout", None, "auth", None, {"session_token": session_token})
+            except Exception as e:
+                conn.rollback()
+                print(f"Failed to invalidate session: {e}")
+            finally:
+                conn.close()
+
+        return jsonify({"message": "Logout successful"}), 200
+
     except Exception as e:
-        return jsonify({'error': 'Logout failed'}), 500
+        return jsonify({"error": "Logout failed"}), 500
 
 @auth_bp.route('/verify-email', methods=['GET', 'POST'])
 def verify_email():
@@ -308,60 +305,77 @@ def verify_email():
         
         if not token:
             return jsonify({'error': 'Verification token is required'}), 400
-        
-        user = User.query.filter_by(email_verification_token=token).first()
-        
-        if not user:
-            return jsonify({'error': 'Invalid or expired verification token'}), 400
-        
-        if user.verify_email_token(token):
-            db.session.commit()
-            
-            log_audit_event('email_verified', user.id, 'user', str(user.id))
-            
-            return jsonify({'message': 'Email verified successfully'}), 200
-        else:
-            return jsonify({'error': 'Invalid or expired verification token'}), 400
-            
-    except Exception as e:
-        return jsonify({'error': 'Email verification failed'}), 500
+        conn = current_app.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id, email_verification_token, email_verification_sent_at FROM users WHERE email_verification_token = %s", (token,))
+            user_data = cursor.fetchone()
 
-@auth_bp.route('/forgot-password', methods=['POST'])
+            if not user_data:
+                return jsonify({"error": "Invalid or expired verification token"}), 400
+
+            user_id, db_token, sent_at = user_data
+
+            if not db_token or (datetime.utcnow() - sent_at) > timedelta(hours=24):
+                return jsonify({"error": "Invalid or expired verification token"}), 400
+
+            cursor.execute("UPDATE users SET status = %s, email_verification_token = NULL, email_verification_sent_at = NULL WHERE id = %s",
+                           ("active", user_id))
+            conn.commit()
+
+            log_audit_event("email_verified", user_id, "user", str(user_id))
+
+            return jsonify({"message": "Email verified successfully"}), 200
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            conn.close()
+
+uth_bp.route('/forgot-password', methods=['POST'])
 def forgot_password():
     """Request password reset"""
     try:
         data = request.get_json()
         email = data.get('email', '').strip().lower()
-        
-        if not email:
-            return jsonify({'error': 'Email is required'}), 400
-        
-        user = User.query.filter_by(email=email).first()
-        
-        if user:
-            reset_token = user.generate_password_reset_token()
-            db.session.commit()
+        conn = current_app.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id, email FROM users WHERE email = %s", (email,))
+            user_data = cursor.fetchone()
+
+            if user_data:
+                user_id, user_email = user_data
+                reset_token = secrets.token_urlsafe(32)
+                reset_expires = datetime.utcnow() + timedelta(hours=1)
+                cursor.execute("UPDATE users SET password_reset_token = %s, password_reset_expires_at = %s WHERE id = %s",
+                               (reset_token, reset_expires, user_id))
+                conn.commit()
+
+                # Send reset email
+                reset_link = f"{request.host_url}auth/reset-password?token={reset_token}"
+                email_body = f"""
+                Password Reset Request
+                
+                Click the link below to reset your password:
+                {reset_link}
+                
+                This link will expire in 1 hour.
+                
+                If you didn\'t request this reset, please ignore this email.
+                """
+                
+                send_email(user_email, "Password Reset - 7th Brain", email_body)
+                
+                log_audit_event("password_reset_requested", user_id, "auth", None)
             
-            # Send reset email
-            reset_link = f"{request.host_url}auth/reset-password?token={reset_token}"
-            email_body = f"""
-            Password Reset Request
-            
-            Click the link below to reset your password:
-            {reset_link}
-            
-            This link will expire in 1 hour.
-            
-            If you didn't request this reset, please ignore this email.
-            """
-            
-            send_email(email, "Password Reset - 7th Brain", email_body)
-            
-            log_audit_event('password_reset_requested', user.id, 'auth', None)
-        
-        # Always return success to prevent email enumeration
-        return jsonify({'message': 'If the email exists, a reset link has been sent'}), 200
-        
+            # Always return success to prevent email enumeration
+            return jsonify({"message": "If the email exists, a reset link has been sent"}), 200
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            conn.close()  
     except Exception as e:
         return jsonify({'error': 'Password reset request failed'}), 500
 
@@ -380,25 +394,39 @@ def reset_password():
         is_strong, message = validate_password_strength(new_password)
         if not is_strong:
             return jsonify({'error': message}), 400
-        
-        user = User.query.filter_by(password_reset_token=token).first()
-        
-        if not user:
-            return jsonify({'error': 'Invalid or expired reset token'}), 400
-        
-        if user.reset_password_with_token(token, new_password):
-            db.session.commit()
-            
-            log_audit_event('password_reset_completed', user.id, 'auth', None)
-            
+        conn = current_app.get_db_connection()
+        cursor = conn.cursor()
+        try:
+            user_data = cursor.fetchone()
+
+            if not user_data:
+                return jsonify({"error": "Invalid or expired reset token"}), 400
+
+            user_id, db_token, expires_at = user_data
+
+            if not db_token or (datetime.utcnow() > expires_at):
+                return jsonify({"error": "Invalid or expired reset token"}), 400
+
+            hashed_password = generate_password_hash(new_password)
+            cursor.execute("UPDATE users SET password_hash = %s, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = %s",
+                           (hashed_password, user_id))
+            conn.commit()
+
+            log_audit_event("password_reset_completed", user_id, "auth", None)
+
             # Send confirmation email
-            send_email(user.email, "Password Changed - 7th Brain", 
+            # You might need to fetch the user's email here if not already available
+            cursor.execute("SELECT email FROM users WHERE id = %s", (user_id,))
+            user_email = cursor.fetchone()[0]
+            send_email(user_email, "Password Changed - 7th Brain", 
                       "Your password has been successfully changed.")
-            
-            return jsonify({'message': 'Password reset successful'}), 200
-        else:
-            return jsonify({'error': 'Invalid or expired reset token'}), 400
-            
+
+            return jsonify({"message": "Password reset successful"}), 200
+        except Exception as e:
+            conn.rollback()
+            return jsonify({"error": str(e)}), 500
+        finally:
+            conn.close()      
     except Exception as e:
         return jsonify({'error': 'Password reset failed'}), 500
 
