@@ -999,6 +999,59 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 
+# Simple debug endpoint to test database connection
+@app.route('/api/test-db')
+def test_db():
+    """Simple test endpoint to check database connection"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Try to create admin user if it doesn't exist
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("SELECT COUNT(*) FROM users WHERE username = %s", ("admin",))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE username = ?", ("admin",))
+        
+        admin_count = cursor.fetchone()[0]
+        
+        if admin_count == 0:
+            # Create admin user
+            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            
+            if DATABASE_TYPE == "postgresql":
+                cursor.execute("""
+                    INSERT INTO users (username, email, password_hash, role, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+            else:
+                cursor.execute("""
+                    INSERT INTO users (username, email, password_hash, role, status)
+                    VALUES (?, ?, ?, ?, ?)
+                """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+            
+            conn.commit()
+            message = "Admin user created"
+        else:
+            message = "Admin user already exists"
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "admin_count": admin_count,
+            "database_type": DATABASE_TYPE
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "database_type": DATABASE_TYPE
+        }), 500
+
 # Debug endpoint to check database status
 @app.route('/api/debug/users')
 def debug_users():
