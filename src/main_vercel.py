@@ -485,7 +485,10 @@ def login():
         username = data.get('username')
         password = data.get('password')
         
+        print(f"Login attempt for username: {username}")
+        
         if not username or not password:
+            print("Missing username or password")
             return jsonify({'error': 'Username and password required'}), 400
             
         conn = get_db_connection()
@@ -499,19 +502,32 @@ def login():
         user = cursor.fetchone()
         
         if not user:
+            print(f"User not found: {username}")
             cursor.close()
             conn.close()
             return jsonify({"error": "Invalid credentials"}), 401
         
         user_id, username, password_hash, role, status = user
+        print(f"User found: {username}, role: {role}, status: {status}")
         
         # Check password using bcrypt
-        if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+        try:
+            password_check = bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+            print(f"Password check result: {password_check}")
+        except Exception as e:
+            print(f"Password check error: {e}")
+            cursor.close()
+            conn.close()
+            return jsonify({"error": "Invalid credentials"}), 401
+        
+        if not password_check:
+            print("Password check failed")
             cursor.close()
             conn.close()
             return jsonify({"error": "Invalid credentials"}), 401
         
         if status != 'active':
+            print(f"Account not active: {status}")
             cursor.close()
             conn.close()
             return jsonify({"error": "Account is not active"}), 401
@@ -545,6 +561,7 @@ def login():
         cursor.close()
         conn.close()
         
+        print(f"Login successful for user: {username}")
         return jsonify({
             "message": "Login successful",
             "user": {
