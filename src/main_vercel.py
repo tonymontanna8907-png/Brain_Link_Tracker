@@ -21,7 +21,14 @@ import bcrypt
 from functools import wraps
 
 # Database imports - using PostgreSQL for Vercel
-from flask_sqlalchemy import SQLAlchemy
+try:
+    import psycopg2
+    from psycopg2 import Error, sql
+    DATABASE_TYPE = "postgresql"
+except ImportError:
+    # Fallback to SQLite for local development
+    import sqlite3
+    DATABASE_TYPE = "sqlite"
 
 app = Flask(__name__, static_folder='static')
 CORS(app, origins="*")
@@ -29,11 +36,399 @@ CORS(app, origins="*")
 # Configuration
 SECRET_KEY = os.environ.get("SECRET_KEY", "your-default-secret-key-if-not-set")
 app.config["SECRET_KEY"] = SECRET_KEY
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db = SQLAlchemy(app)
-=7)
+# Database configuration
+if DATABASE_TYPE == "postgresql":
+    DATABASE_URL = os.environ.get("DATABASE_URL")
+else:
+    DATABASE_PATH = os.path.join(os.path.dirname(__file__), "database", "app.db")
+
+def get_db_connection():
+    """Get a database connection"""
+    if DATABASE_TYPE == "postgresql":
+        return psycopg2.connect(DATABASE_URL)
+    else:
+        return sqlite3.connect(DATABASE_PATH)
+
+# Initialize database
+def init_db():
+    try:
+        conn = current_app.get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            # PostgreSQL table creation
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash VARCHAR(255) NOT NULL,
+                    role VARCHAR(50) NOT NULL DEFAULT 'member',
+                    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+                    parent_id INTEGER,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP WITH TIME ZONE,
+                    subscription_status VARCHAR(50) DEFAULT 'inactive',
+                    subscription_expires TIMESTAMP WITH TIME ZONE,
+                    FOREIGN KEY (parent_id) REFERENCES users (id)
+                );
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_permissions (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    permission VARCHAR(255) NOT NULL,
+                    granted_by INTEGER,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    FOREIGN KEY (granted_by) REFERENCES users (id)
+                );
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    session_token VARCHAR(255) UNIQUE NOT NULL,
+                    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                );
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS campaigns (
+                    id SERIAL PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    user_id INTEGER NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    status VARCHAR(50) DEFAULT 'active',
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                );
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tracking_links (
+                    id SERIAL PRIMARY KEY,
+                    campaign_id INTEGER,
+                    user_id INTEGER NOT NULL,
+                    original_url TEXT NOT NULL,
+                    tracking_token VARCHAR(255) UNIQUE NOT NULL,
+                    recipient_email VARCHAR(255),
+                    recipient_name VARCHAR(255),
+                    link_status VARCHAR(50) DEFAULT 'active',
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP WITH TIME ZONE,
+                    click_limit INTEGER DEFAULT 0,
+                    click_count INTEGER DEFAULT 0,
+                    last_clicked TIMESTAMP WITH TIME ZONE,
+                    custom_message TEXT,
+                    redirect_delay INTEGER DEFAULT 0,
+                    password_protected BOOLEAN DEFAULT FALSE,
+                    access_password VARCHAR(255),
+                    geo_restrictions TEXT,
+                    device_restrictions TEXT,
+                    time_restrictions TEXT,
+                    FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                );
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS tracking_events (
+                    id SERIAL PRIMARY KEY,
+                    tracking_token VARCHAR(255) NOT NULL,
+                    event_type VARCHAR(100) NOT NULL,
+                    ip_address INET,
+                    user_agent TEXT,
+                    referrer TEXT,
+                    country VARCHAR(100),
+                    city VARCHAR(100),
+                    device_type VARCHAR(100),
+                    browser VARCHAR(100),
+                    os VARCHAR(100),
+                    timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    additional_data JSONB,
+                    campaign_id INTEGER,
+                    user_id INTEGER,
+                    is_bot BOOLEAN DEFAULT FALSE,
+                    bot_confidence DECIMAL(3,2),
+                    bot_reason TEXT,
+                    status VARCHAR(50) DEFAULT 'processed',
+                    FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                );
+            """)
+            
+        else:
+            # SQLite table creation (for local development)
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    role TEXT NOT NULL DEFAULT 'member',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    parent_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP,
+                    subscription_status TEXT DEFAULT 'inactive',
+                    subscription_expires TIMESTAMP,
+                    FOREIGN KEY (parent_id) REFERENCES users (id)
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_permissions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    permission TEXT NOT NULL,
+                    granted_by INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id),
+                    FOREIGN KEY (granted_by) REFERENCES users (id)
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    session_token TEXT UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS campaigns (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    user_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    status TEXT DEFAULT 'active',
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tracking_links (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    campaign_id INTEGER,
+                    user_id INTEGER NOT NULL,
+                    original_url TEXT NOT NULL,
+                    tracking_token TEXT UNIQUE NOT NULL,
+                    recipient_email TEXT,
+                    recipient_name TEXT,
+                    link_status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at TIMESTAMP,
+                    click_limit INTEGER DEFAULT 0,
+                    click_count INTEGER DEFAULT 0,
+                    last_clicked TIMESTAMP,
+                    custom_message TEXT,
+                    redirect_delay INTEGER DEFAULT 0,
+                    password_protected INTEGER DEFAULT 0,
+                    access_password TEXT,
+                    geo_restrictions TEXT,
+                    device_restrictions TEXT,
+                    time_restrictions TEXT,
+                    FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tracking_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    tracking_token TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    referrer TEXT,
+                    country TEXT,
+                    city TEXT,
+                    device_type TEXT,
+                    browser TEXT,
+                    os TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    additional_data TEXT,
+                    campaign_id INTEGER,
+                    user_id INTEGER,
+                    is_bot INTEGER DEFAULT 0,
+                    bot_confidence REAL,
+                    bot_reason TEXT,
+                    status TEXT DEFAULT 'processed',
+                    FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )
+            ''')
+        
+        # Check if admin user exists
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+        else:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+        
+        admin_count = cursor.fetchone()[0]
+        
+        if admin_count == 0:
+            # Create default admin user
+            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            
+            if DATABASE_TYPE == "postgresql":
+                cursor.execute("""
+                    INSERT INTO users (username, email, password_hash, role, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+            else:
+                cursor.execute("""
+                    INSERT INTO users (username, email, password_hash, role, status)
+                    VALUES (?, ?, ?, ?, ?)
+                """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+            
+            print("✅ Default admin user created: admin / admin123")
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ Database initialized successfully!")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Database initialization error: {e}")
+        return False
+
+# Authentication decorator
+def require_auth(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        session_token = request.headers.get('Authorization')
+        if not session_token:
+            return jsonify({'error': 'No authorization token provided'}), 401
+        
+        if session_token.startswith('Bearer '):
+            session_token = session_token[7:]
+        
+        try:
+            conn = current_app.get_db_connection()
+            cursor = conn.cursor()
+            
+            if DATABASE_TYPE == "postgresql":
+                cursor.execute("""
+                    SELECT u.id, u.username, u.role, u.status 
+                    FROM users u 
+                    JOIN user_sessions s ON u.id = s.user_id 
+                    WHERE s.session_token = %s AND s.expires_at > CURRENT_TIMESTAMP
+                """, (session_token,))
+            else:
+                cursor.execute("""
+                    SELECT u.id, u.username, u.role, u.status 
+                    FROM users u 
+                    JOIN user_sessions s ON u.id = s.user_id 
+                    WHERE s.session_token = ? AND s.expires_at > datetime('now')
+                """, (session_token,))
+            
+            user = cursor.fetchone()
+            cursor.close()
+            conn.close()
+            
+            if not user:
+                return jsonify({'error': 'Invalid or expired session'}), 401
+            
+            if user[3] != 'active':  # status
+                return jsonify({'error': 'Account not active'}), 401
+            
+            # Add user info to request context
+            request.current_user = {
+                'id': user[0],
+                'username': user[1],
+                'role': user[2],
+                'status': user[3]
+            }
+            
+            return f(*args, **kwargs)
+            
+        except Exception as e:
+            print(f"Auth error: {e}")
+            return jsonify({'error': 'Authentication failed'}), 401
+    
+    return decorated_function
+
+# Frontend serving routes
+@app.route('/')
+def serve_frontend():
+    """Serve the main frontend page"""
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static_files(path):
+    """Serve static files"""
+    try:
+        return send_from_directory(app.static_folder, path)
+    except:
+        # If file not found, serve index.html for SPA routing
+        return send_from_directory(app.static_folder, 'index.html')
+
+# Health check endpoint
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'message': 'Brain Link Tracker API is running',
+        'version': '1.0.0',
+        'database': DATABASE_TYPE
+    })
+
+# Authentication endpoints
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """User login endpoint"""
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+        
+        if not username or not password:
+            return jsonify({'error': 'Username and password required'}), 400
+        
+        conn = current_app.get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("SELECT id, username, password_hash, role, status FROM users WHERE username = %s", (username,))
+        else:
+            cursor.execute("SELECT id, username, password_hash, role, status FROM users WHERE username = ?", (username,))
+        
+        user = cursor.fetchone()
+        
+        if not user:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Invalid credentials'}), 401
+        
+        user_id, username, password_hash, role, status = user
+        
+        if status != 'active':
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Account not active'}), 401
+        
+        if not bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8')):
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Invalid credentials'}), 401
+        
+        # Create session
+        session_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now() + timedelta(days=7)
         
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
@@ -152,7 +547,13 @@ def not_found(error):
 def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
+if __name__ == '__main__':
+    init_db()
+    print(f"✅ Brain Link Tracker starting with {DATABASE_TYPE} database...")
+    app.run(host='0.0.0.0', port=5000, debug=True)
 
+
+# User management endpoints
 @app.route('/api/users', methods=['GET'])
 @require_auth
 def get_users():
