@@ -49,7 +49,12 @@ function App() {
 
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch(API_ENDPOINTS.ANALYTICS)
+      const response = await fetch(API_ENDPOINTS.ANALYTICS, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
       if (response.ok) {
         const data = await response.json()
         setAnalytics(data)

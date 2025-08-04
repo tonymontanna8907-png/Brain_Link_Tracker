@@ -514,12 +514,12 @@ def register():
                 cursor.execute("""
                     INSERT INTO users (username, email, password_hash, role, status)
                     VALUES (%s, %s, %s, %s, %s)
-                """, (username, email, password_hash, "member", "active"))
+                """, (username, email, password_hash, "member", "pending"))
             else:
                 cursor.execute("""
                     INSERT INTO users (username, email, password_hash, role, status)
                     VALUES (?, ?, ?, ?, ?)
-                """, (username, email, password_hash, "member", "active"))
+                """, (username, email, password_hash, "member", "pending"))
             
             conn.commit()
             cursor.close()
@@ -551,4 +551,177 @@ if __name__ == '__main__':
     init_db()
     print(f"✅ Brain Link Tracker starting with {DATABASE_TYPE} database...")
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+
+# User management endpoints
+@app.route('/api/users', methods=['GET'])
+@require_auth
+def get_users():
+    """Get all users (admin only)"""
+    try:
+        if request.current_user['role'] != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                SELECT id, username, email, role, status, created_at, last_login
+                FROM users ORDER BY created_at DESC
+            """)
+        else:
+            cursor.execute("""
+                SELECT id, username, email, role, status, created_at, last_login
+                FROM users ORDER BY created_at DESC
+            """)
+        
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        user_list = []
+        for user in users:
+            user_list.append({
+                'id': user[0],
+                'username': user[1],
+                'email': user[2],
+                'role': user[3],
+                'status': user[4],
+                'created_at': user[5],
+                'last_login': user[6]
+            })
+        
+        return jsonify(user_list)
+        
+    except Exception as e:
+        print(f"Get users error: {e}")
+        return jsonify({'error': 'Failed to fetch users'}), 500
+
+@app.route('/api/users/<int:user_id>/approve', methods=['POST'])
+@require_auth
+def approve_user(user_id):
+    """Approve a pending user (admin only)"""
+    try:
+        if request.current_user['role'] != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("UPDATE users SET status = 'active' WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("UPDATE users SET status = 'active' WHERE id = ?", (user_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'User approved successfully'})
+        
+    except Exception as e:
+        print(f"Approve user error: {e}")
+        return jsonify({'error': 'Failed to approve user'}), 500
+
+@app.route('/api/users/<int:user_id>/reject', methods=['POST'])
+@require_auth
+def reject_user(user_id):
+    """Reject a pending user (admin only)"""
+    try:
+        if request.current_user['role'] != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("UPDATE users SET status = 'rejected' WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("UPDATE users SET status = 'rejected' WHERE id = ?", (user_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'User rejected successfully'})
+        
+    except Exception as e:
+        print(f"Reject user error: {e}")
+        return jsonify({'error': 'Failed to reject user'}), 500
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@require_auth
+def delete_user(user_id):
+    """Delete a user (admin only)"""
+    try:
+        if request.current_user['role'] != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'User deleted successfully'})
+        
+    except Exception as e:
+        print(f"Delete user error: {e}")
+        return jsonify({'error': 'Failed to delete user'}), 500
+
+@app.route('/api/analytics', methods=['GET'])
+@require_auth
+def get_analytics():
+    """Get analytics data"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get user counts
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM users WHERE status = 'active'")
+            active_users = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM users WHERE status = 'pending'")
+            pending_users = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+            admin_users = cursor.fetchone()[0]
+        else:
+            cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM users WHERE status = 'active'")
+            active_users = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM users WHERE status = 'pending'")
+            pending_users = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+            admin_users = cursor.fetchone()[0]
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'total_users': total_users,
+            'active_users': active_users,
+            'pending_users': pending_users,
+            'admin_users': admin_users,
+            'last_updated': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Analytics error: {e}")
+        return jsonify({'error': 'Failed to fetch analytics'}), 500
 

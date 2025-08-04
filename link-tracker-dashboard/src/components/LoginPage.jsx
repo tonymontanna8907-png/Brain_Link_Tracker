@@ -228,9 +228,7 @@ const LoginPage = ({ onLogin }) => {
           </TabsContent>
         </Tabs>
 
-        <div className="mt-6 text-center text-sm text-slate-400">
-          <p>Default Admin Login: admin / admin123</p>
-        </div>
+
       </div>
     </div>
   );

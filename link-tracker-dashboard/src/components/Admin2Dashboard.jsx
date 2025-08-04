@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Label } from './ui/label';
 import { toast } from 'sonner';
+import { API_ENDPOINTS } from '../config';
 import { 
   Users, UserCheck, UserX, Shield, Briefcase, HardHat, 
   TrendingUp, Activity, BarChart3, Eye, Settings 
@@ -25,7 +26,7 @@ const Admin2Dashboard = ({ user, token }) => {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('https://5000-i3axerqweb415mh7wgsgs-15aa9b1c.manus.computer/api/admin/users', {
+      const response = await fetch(API_ENDPOINTS.USERS, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -33,7 +34,7 @@ const Admin2Dashboard = ({ user, token }) => {
 
       if (response.ok) {
         const data = await response.json();
-        setUsers(data.users);
+        setUsers(data);
       } else {
         toast.error('Failed to fetch users');
       }
@@ -46,7 +47,7 @@ const Admin2Dashboard = ({ user, token }) => {
 
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch('https://5000-i3axerqweb415mh7wgsgs-15aa9b1c.manus.computer/api/analytics', {
+      const response = await fetch(API_ENDPOINTS.ANALYTICS, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -63,7 +64,7 @@ const Admin2Dashboard = ({ user, token }) => {
 
   const approveUser = async (userId) => {
     try {
-      const response = await fetch(`https://5000-i3axerqweb415mh7wgsgs-15aa9b1c.manus.computer/api/admin/users/${userId}/approve`, {
+      const response = await fetch(`${API_ENDPOINTS.USERS}/${userId}/approve`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

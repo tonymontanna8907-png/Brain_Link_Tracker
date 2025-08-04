@@ -12,6 +12,7 @@ export const API_ENDPOINTS = {
   ANALYTICS: `${API_BASE}/analytics`,
   CAMPAIGNS: `${API_BASE}/campaigns`,
   LINKS: `${API_BASE}/links`,
-  HEALTH: `${API_BASE}/health`
+  HEALTH: `${API_BASE}/health`,
+  USERS: `${API_BASE}/users`
 };
 
