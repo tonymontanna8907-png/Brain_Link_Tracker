@@ -378,13 +378,58 @@ def serve_static_files(path):
 # Health check endpoint
 @app.route('/api/health')
 def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'message': 'Brain Link Tracker API is running',
-        'version': '1.0.0',
-        'database': DATABASE_TYPE
-    })
+    """Health check endpoint with database initialization"""
+    try:
+        # Check if admin user exists and create if needed
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("SELECT COUNT(*) FROM users WHERE username = %s", ("admin",))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE username = ?", ("admin",))
+        
+        admin_count = cursor.fetchone()[0]
+        
+        if admin_count == 0:
+            # Create admin user
+            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            
+            if DATABASE_TYPE == "postgresql":
+                cursor.execute("""
+                    INSERT INTO users (username, email, password_hash, role, status)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+            else:
+                cursor.execute("""
+                    INSERT INTO users (username, email, password_hash, role, status)
+                    VALUES (?, ?, ?, ?, ?)
+                """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+            
+            conn.commit()
+            admin_status = "created"
+        else:
+            admin_status = "exists"
+        
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'status': 'healthy',
+            'message': 'Brain Link Tracker API is running',
+            'version': '1.0.0',
+            'database': DATABASE_TYPE,
+            'admin_user': admin_status
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'healthy',
+            'message': 'Brain Link Tracker API is running',
+            'version': '1.0.0',
+            'database': DATABASE_TYPE,
+            'admin_user_error': str(e)
+        })
 
 # Authentication endpoints
 @app.route('/api/auth/login', methods=['POST'])
