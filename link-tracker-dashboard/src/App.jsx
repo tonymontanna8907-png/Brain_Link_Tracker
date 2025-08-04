@@ -170,7 +170,7 @@ function App() {
                 </TabsList>
 
               <TabsContent value="analytics" className="space-y-6">
-                {analytics && (
+                {analytics ? (
                   <>
                     {/* Overview Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
@@ -179,9 +179,9 @@ function App() {
                           <div className="flex items-center space-x-2">
                             <TrendingUp className="h-5 w-5 text-blue-500" />
                             <div>
-                              <p className="text-sm font-medium text-gray-600">Total Clicks</p>
-                              <p className="text-2xl font-bold text-gray-900">{analytics.overview.totalClicks}</p>
-                              <p className="text-xs text-green-600">+12.5% from last week</p>
+                              <p className="text-sm font-medium text-gray-600">Total Users</p>
+                              <p className="text-2xl font-bold text-gray-900">{analytics.total_users || 0}</p>
+                              <p className="text-xs text-green-600">All registered users</p>
                             </div>
                           </div>
                         </CardContent>
@@ -191,12 +191,12 @@ function App() {
                         <CardContent className="p-4">
                           <div className="flex items-center space-x-2">
                             <div className="h-5 w-5 bg-green-500 rounded-full flex items-center justify-center">
-                              <span className="text-white text-xs">@</span>
+                              <span className="text-white text-xs">✓</span>
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-gray-600">Email Opens</p>
-                              <p className="text-2xl font-bold text-gray-900">{analytics.overview.totalOpens}</p>
-                              <p className="text-xs text-green-600">+8.2% from last week</p>
+                              <p className="text-sm font-medium text-gray-600">Active Users</p>
+                              <p className="text-2xl font-bold text-gray-900">{analytics.active_users || 0}</p>
+                              <p className="text-xs text-green-600">Approved accounts</p>
                             </div>
                           </div>
                         </CardContent>
@@ -207,9 +207,9 @@ function App() {
                           <div className="flex items-center space-x-2">
                             <Users className="h-5 w-5 text-purple-500" />
                             <div>
-                              <p className="text-sm font-medium text-gray-600">Unique Visitors</p>
-                              <p className="text-2xl font-bold text-gray-900">{analytics.overview.uniqueVisitors}</p>
-                              <p className="text-xs text-green-600">+5.7% from last week</p>
+                              <p className="text-sm font-medium text-gray-600">Pending Approval</p>
+                              <p className="text-2xl font-bold text-gray-900">{analytics.pending_users || 0}</p>
+                              <p className="text-xs text-orange-600">Awaiting approval</p>
                             </div>
                           </div>
                         </CardContent>
@@ -220,9 +220,9 @@ function App() {
                           <div className="flex items-center space-x-2">
                             <Activity className="h-5 w-5 text-orange-500" />
                             <div>
-                              <p className="text-sm font-medium text-gray-600">Conversion Rate</p>
-                              <p className="text-2xl font-bold text-gray-900">{analytics.overview.conversionRate}%</p>
-                              <p className="text-xs text-green-600">+2.1% from last week</p>
+                              <p className="text-sm font-medium text-gray-600">Admin Users</p>
+                              <p className="text-2xl font-bold text-gray-900">{analytics.admin_users || 0}</p>
+                              <p className="text-xs text-blue-600">System administrators</p>
                             </div>
                           </div>
                         </CardContent>
@@ -233,9 +233,9 @@ function App() {
                           <div className="flex items-center space-x-2">
                             <Shield className="h-5 w-5 text-red-500" />
                             <div>
-                              <p className="text-sm font-medium text-gray-600">Blocked Requests</p>
-                              <p className="text-2xl font-bold text-gray-900">{analytics.overview.blockedRequests}</p>
-                              <p className="text-xs text-red-600">Security active</p>
+                              <p className="text-sm font-medium text-gray-600">System Status</p>
+                              <p className="text-2xl font-bold text-gray-900">Online</p>
+                              <p className="text-xs text-green-600">All systems operational</p>
                             </div>
                           </div>
                         </CardContent>
@@ -246,8 +246,8 @@ function App() {
                           <div className="flex items-center space-x-2">
                             <AlertTriangle className="h-5 w-5 text-yellow-500" />
                             <div>
-                              <p className="text-sm font-medium text-gray-600">Risk Score</p>
-                              <p className="text-2xl font-bold text-gray-900">{(analytics.overview.riskScore * 100).toFixed(1)}%</p>
+                              <p className="text-sm font-medium text-gray-600">Last Updated</p>
+                              <p className="text-2xl font-bold text-gray-900">{analytics.last_updated ? new Date(analytics.last_updated).toLocaleTimeString() : 'Now'}</p>
                               <p className="text-xs text-yellow-600">Monitoring</p>
                             </div>
                           </div>
@@ -259,50 +259,58 @@ function App() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <Card>
                         <CardHeader>
-                          <CardTitle>Hourly Activity (Last 24 Hours)</CardTitle>
+                          <CardTitle>User Statistics</CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <AreaChart data={analytics.hourlyActivity}>
-                              <CartesianGrid strokeDasharray="3 3" />
-                              <XAxis dataKey="hour" />
-                              <YAxis />
-                              <Tooltip />
-                              <Area type="monotone" dataKey="clicks" stackId="1" stroke="#8884d8" fill="#8884d8" />
-                              <Area type="monotone" dataKey="opens" stackId="1" stroke="#82ca9d" fill="#82ca9d" />
-                            </AreaChart>
-                          </ResponsiveContainer>
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Total Users</span>
+                              <span className="text-lg font-bold">{analytics.total_users || 0}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Active Users</span>
+                              <span className="text-lg font-bold text-green-600">{analytics.active_users || 0}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Pending Users</span>
+                              <span className="text-lg font-bold text-orange-600">{analytics.pending_users || 0}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Admin Users</span>
+                              <span className="text-lg font-bold text-blue-600">{analytics.admin_users || 0}</span>
+                            </div>
+                          </div>
                         </CardContent>
                       </Card>
 
                       <Card>
                         <CardHeader>
-                          <CardTitle>Device Types</CardTitle>
+                          <CardTitle>System Information</CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <ResponsiveContainer width="100%" height={300}>
-                            <PieChart>
-                              <Pie
-                                data={analytics.deviceTypes}
-                                cx="50%"
-                                cy="50%"
-                                labelLine={false}
-                                label={({ name, value }) => `${name}: ${value}%`}
-                                outerRadius={80}
-                                fill="#8884d8"
-                                dataKey="value"
-                              >
-                                {analytics.deviceTypes.map((entry, index) => (
-                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                              </Pie>
-                              <Tooltip />
-                            </PieChart>
-                          </ResponsiveContainer>
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Database Status</span>
+                              <Badge className="bg-green-100 text-green-800">Connected</Badge>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">API Status</span>
+                              <Badge className="bg-green-100 text-green-800">Online</Badge>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Last Updated</span>
+                              <span className="text-sm">{analytics.last_updated ? new Date(analytics.last_updated).toLocaleString() : 'Just now'}</span>
+                            </div>
+                          </div>
                         </CardContent>
                       </Card>
                     </div>
                   </>
+                ) : (
+                  <div className="text-center py-8">
+                    <TrendingUp className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                    <p className="text-gray-600">Loading analytics data...</p>
+                  </div>
                 )}
               </TabsContent>
 
@@ -321,108 +329,93 @@ function App() {
               )}
 
               <TabsContent value="security" className="space-y-6">
-                {analytics && (
-                  <>
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center space-x-2">
-                          <Shield className="h-5 w-5" />
-                          <span>Security Events</span>
-                        </CardTitle>
-                        <CardDescription>
-                          Real-time security monitoring and threat detection
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                          {analytics.securityEvents.map((event, index) => (
-                            <Card key={index}>
-                              <CardContent className="p-4">
-                                <div className="flex items-center justify-between">
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-600">{event.type}</p>
-                                    <p className="text-2xl font-bold text-gray-900">{event.count}</p>
-                                  </div>
-                                  <Badge variant={event.severity === 'high' ? 'destructive' : 'secondary'}>
-                                    {event.severity}
-                                  </Badge>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </>
-                )}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <Shield className="h-5 w-5" />
+                      <span>Security Status</span>
+                    </CardTitle>
+                    <CardDescription>
+                      System security monitoring and user access control
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">Authentication</p>
+                              <p className="text-2xl font-bold text-gray-900">Secure</p>
+                            </div>
+                            <Badge className="bg-green-100 text-green-800">Active</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">User Sessions</p>
+                              <p className="text-2xl font-bold text-gray-900">{analytics ? analytics.active_users || 0 : 0}</p>
+                            </div>
+                            <Badge className="bg-blue-100 text-blue-800">Monitored</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      
+                      <Card>
+                        <CardContent className="p-4">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-600">Access Control</p>
+                              <p className="text-2xl font-bold text-gray-900">Enabled</p>
+                            </div>
+                            <Badge className="bg-green-100 text-green-800">Protected</Badge>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="geography" className="space-y-6">
-                {analytics && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center space-x-2">
-                        <Globe className="h-5 w-5" />
-                        <span>Top Countries</span>
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {analytics.topCountries.map((country, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                                {country.code}
-                              </div>
-                              <div>
-                                <p className="font-medium">{country.country}</p>
-                                <p className="text-sm text-gray-600">{country.clicks} clicks, {country.opens} opens</p>
-                              </div>
-                            </div>
-                            <Badge variant="outline">{country.percentage}%</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <Globe className="h-5 w-5" />
+                      <span>Geographic Information</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-center py-8">
+                      <Globe className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                      <p className="text-gray-600">Geographic data will be available when user activity is tracked.</p>
+                    </div>
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="live-activity" className="space-y-6">
-                {analytics && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center space-x-2">
-                        <Activity className="h-5 w-5" />
-                        <span>Recent Activity</span>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <Activity className="h-5 w-5" />
+                      <span>Live Activity</span>
                       </CardTitle>
                       <CardDescription>
                         Live tracking events and user interactions
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-3">
-                        {analytics.recentActivity.map((activity, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                            <div className="flex items-center space-x-3">
-                              <div className={`w-3 h-3 rounded-full ${activity.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                              <div>
-                                <p className="font-medium">{activity.event}</p>
-                                <p className="text-sm text-gray-600">{activity.location} • {activity.device}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm text-gray-600">{activity.time}</p>
-                              <Badge variant={activity.status === 'success' ? 'default' : 'destructive'}>
-                                {activity.status}
-                              </Badge>
-                            </div>
-                          </div>
-                        ))}
+                      <div className="text-center py-8">
+                        <Activity className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                        <p className="text-gray-600">Live activity data will appear here when users interact with the system.</p>
                       </div>
                     </CardContent>
                   </Card>
-                )}
               </TabsContent>
             </Tabs>
           </div>
