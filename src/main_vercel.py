@@ -431,6 +431,51 @@ def health_check():
             'admin_user_error': str(e)
         })
 
+# Simple admin creation endpoint
+@app.route('/api/create-admin')
+def create_admin():
+    """Force admin user creation"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Delete existing admin if any
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("DELETE FROM users WHERE username = %s", ("admin",))
+        else:
+            cursor.execute("DELETE FROM users WHERE username = ?", ("admin",))
+        
+        # Create new admin user
+        admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                INSERT INTO users (username, email, password_hash, role, status)
+                VALUES (%s, %s, %s, %s, %s)
+            """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+        else:
+            cursor.execute("""
+                INSERT INTO users (username, email, password_hash, role, status)
+                VALUES (?, ?, ?, ?, ?)
+            """, ("admin", "admin@brainlinktracker.com", admin_password, "admin", "active"))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Admin user created successfully',
+            'username': 'admin',
+            'password': 'admin123'
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        })
+
 # Authentication endpoints
 @app.route('/api/auth/login', methods=['POST'])
 def login():
