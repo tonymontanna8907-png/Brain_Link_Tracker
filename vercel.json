@@ -20,6 +20,9 @@
       "dest": "/api/index.py"
     },
     {
+      "handle": "filesystem"
+    },
+    {
       "src": "/(.*)",
       "dest": "/link-tracker-dashboard/dist/index.html"
     }
