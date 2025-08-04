@@ -100,18 +100,18 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       <div className="container mx-auto p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8 space-y-4 lg:space-y-0">
           <div className="flex items-center space-x-4">
             <div className="flex items-center space-x-3">
-              <Link className="h-8 w-8 text-blue-400" />
+              <Link className="h-6 w-6 lg:h-8 lg:w-8 text-blue-400" />
               <div>
-                <h1 className="text-3xl font-bold text-white">Brain Link Tracker</h1>
-                <p className="text-slate-300">Advanced Analytics Dashboard</p>
+                <h1 className="text-2xl lg:text-3xl font-bold text-white">Brain Link Tracker</h1>
+                <p className="text-slate-300 text-sm lg:text-base">Advanced Analytics Dashboard</p>
               </div>
             </div>
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="text-right">
+          <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+            <div className="text-left sm:text-right">
               <p className="text-white font-medium">{user.username}</p>
               <Badge className={`${getRoleBadgeColor(user.role)} text-white`}>
                 {user.role === 'admin' && <Crown className="h-3 w-3 mr-1" />}
@@ -133,14 +133,14 @@ function App() {
         ) : (
           <div className="bg-white rounded-lg shadow-lg">
             <div className="p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-4">
-                  <h2 className="text-2xl font-bold text-gray-800">Advanced Analytics</h2>
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 space-y-4 lg:space-y-0">
+                <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
+                  <h2 className="text-xl lg:text-2xl font-bold text-gray-800">Advanced Analytics</h2>
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs lg:text-sm">
                     Last updated: {analytics && analytics.last_updated ? new Date(analytics.last_updated).toLocaleTimeString() : 'Loading...'}
                   </Badge>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" onClick={fetchAnalytics}>
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Refresh
@@ -156,7 +156,7 @@ function App() {
               </div>
 
               <Tabs defaultValue="analytics" className="w-full">
-                <TabsList className="grid w-full grid-cols-6">
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1">
                   <TabsTrigger value="analytics">Analytics</TabsTrigger>
                   <TabsTrigger value="tracking-links">Tracking Links</TabsTrigger>
                   {(user.role === 'admin' || user.role === 'admin2') && (
@@ -173,7 +173,7 @@ function App() {
                 {analytics ? (
                   <>
                     {/* Overview Cards */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                       <Card>
                         <CardContent className="p-4">
                           <div className="flex items-center space-x-2">
