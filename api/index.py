@@ -34,7 +34,7 @@ CORS(app, origins="*")
 
 # Configuration
 SECRET_KEY = os.environ.get("SECRET_KEY", "ej5B3Amppi4gjpbC65te6rJuvJzgVCWW_xfB-ZLR1TE")
-app.config[\'SECRET_KEY\'] = SECRET_KEY
+app.config[\\'SECRET_KEY\\'] = SECRET_KEY
 
 # Database configuration
 if DATABASE_TYPE == "postgresql":
@@ -63,12 +63,12 @@ def init_db():
                     username VARCHAR(255) UNIQUE NOT NULL,
                     email VARCHAR(255) UNIQUE NOT NULL,
                     password_hash VARCHAR(255) NOT NULL,
-                    role VARCHAR(50) NOT NULL DEFAULT \'member\',
-                    status VARCHAR(50) NOT NULL DEFAULT \'pending\',
+                    role VARCHAR(50) NOT NULL DEFAULT \\'member\\',
+                    status VARCHAR(50) NOT NULL DEFAULT \\'pending\\',
                     parent_id INTEGER,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP WITH TIME ZONE,
-                    subscription_status VARCHAR(50) DEFAULT \'inactive\',
+                    subscription_status VARCHAR(50) DEFAULT \\'inactive\\',
                     subscription_expires TIMESTAMP WITH TIME ZONE,
                     FOREIGN KEY (parent_id) REFERENCES users (id)
                 );
@@ -104,7 +104,7 @@ def init_db():
                     description TEXT,
                     user_id INTEGER NOT NULL,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    status VARCHAR(50) DEFAULT \'active\',
+                    status VARCHAR(50) DEFAULT \\'active\\',
                     FOREIGN KEY (user_id) REFERENCES users (id)
                 );
             """)
@@ -118,7 +118,7 @@ def init_db():
                     tracking_token VARCHAR(255) UNIQUE NOT NULL,
                     recipient_email VARCHAR(255),
                     recipient_name VARCHAR(255),
-                    link_status VARCHAR(50) DEFAULT \'active\',
+                    link_status VARCHAR(50) DEFAULT \\'active\\',
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                     expires_at TIMESTAMP WITH TIME ZONE,
                     click_limit INTEGER DEFAULT 0,
@@ -156,7 +156,7 @@ def init_db():
                     is_bot INTEGER DEFAULT 0,
                     bot_confidence REAL,
                     bot_reason TEXT,
-                    status VARCHAR(50) DEFAULT \'processed\',
+                    status VARCHAR(50) DEFAULT \\'processed\\',
                     FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
                     FOREIGN KEY (user_id) REFERENCES users (id)
                 );
@@ -169,12 +169,12 @@ def init_db():
                     username TEXT UNIQUE NOT NULL,
                     email TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
-                    role TEXT NOT NULL DEFAULT \'member\',
-                    status TEXT NOT NULL DEFAULT \'pending\',
+                    role TEXT NOT NULL DEFAULT \\'member\\',
+                    status TEXT NOT NULL DEFAULT \\'pending\\',
                     parent_id INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     last_login TIMESTAMP,
-                    subscription_status TEXT DEFAULT \'inactive\',
+                    subscription_status TEXT DEFAULT \\'inactive\\',
                     subscription_expires TIMESTAMP,
                     FOREIGN KEY (parent_id) REFERENCES users (id)
                 )
@@ -198,7 +198,7 @@ def init_db():
                     description TEXT,
                     user_id INTEGER NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    status TEXT DEFAULT \'active\',
+                    status TEXT DEFAULT \\'active\\',
                     FOREIGN KEY (user_id) REFERENCES users (id)
                 )
             \'\'\')
@@ -212,7 +212,7 @@ def init_db():
                     tracking_token TEXT UNIQUE NOT NULL,
                     recipient_email TEXT,
                     recipient_name TEXT,
-                    link_status TEXT DEFAULT \'active\',
+                    link_status TEXT DEFAULT \\'active\\',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     expires_at TIMESTAMP,
                     click_limit INTEGER DEFAULT 0,
@@ -250,7 +250,7 @@ def init_db():
                     is_bot INTEGER DEFAULT 0,
                     bot_confidence REAL,
                     bot_reason TEXT,
-                    status TEXT DEFAULT \'processed\',
+                    status TEXT DEFAULT \\'processed\\',
                     FOREIGN KEY (campaign_id) REFERENCES campaigns (id),
                     FOREIGN KEY (user_id) REFERENCES users (id)
                 )
@@ -258,9 +258,9 @@ def init_db():
         
         # Check if admin user exists
         if DATABASE_TYPE == "postgresql":
-            cursor.execute("SELECT COUNT(*) FROM users WHERE role = \'admin\'")
+            cursor.execute("SELECT COUNT(*) FROM users WHERE role = \\'admin\\' ")
         else:
-            cursor.execute("SELECT COUNT(*) FROM users WHERE role = \'admin\'")
+            cursor.execute("SELECT COUNT(*) FROM users WHERE role = \\'admin\\' ")
         
         admin_count = cursor.fetchone()[0]
         
@@ -964,11 +964,11 @@ def get_tracking_link(link_id):
         \'recipient_email\': link[5],
         \'recipient_name\': link[6],
         \'link_status\': link[7],
-        \'created_at\': link[8].isoformat() if link[8] else None,
-        \'expires_at\': link[9].isoformat() if link[9] else None,
+        \'created_at\': link[8],
+        \'expires_at\': link[9],
         \'click_limit\': link[10],
         \'click_count\': link[11],
-        \'last_clicked\': link[12].isoformat() if link[12] else None,
+        \'last_clicked\': link[12],
         \'custom_message\': link[13],
         \'redirect_delay\': link[14],
         \'password_protected\': bool(link[15]),
@@ -1119,7 +1119,7 @@ def delete_tracking_link(link_id):
 @app.route(\'/api/tracking_events\', methods=[\'GET\'])
 @require_auth
 def get_tracking_events():
-    """Get all tracking events for the current user's links"""
+    """Get all tracking events for the current user\'s links"""
     user_id = request.current_user[\'id\']
     
     conn = get_db_connection()
@@ -1181,7 +1181,7 @@ def get_tracking_events():
 @app.route(\'/api/tracking_events/summary\', methods=[\'GET\'])
 @require_auth
 def get_tracking_summary():
-    """Get a summary of tracking events for the current user's links"""
+    """Get a summary of tracking events for the current user\'s links"""
     user_id = request.current_user[\'id\']
     
     conn = get_db_connection()

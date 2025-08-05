@@ -22,7 +22,12 @@
       "src": "/(.*)",
       "dest": "/dist/$1"
     }
-  ]
+  ],
+  "functions": {
+    "api/index.py": {
+      "includeFiles": ["node_modules/**", "venv/**"]
+    }
+  }
 }
 
 
