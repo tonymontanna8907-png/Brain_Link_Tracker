@@ -27,7 +27,7 @@ try:
         
         if admin_count == 0:
             # Create admin user
-            admin_password = bcrypt.hashpw("admin123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            admin_password = bcrypt.hashpw("admin123".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
             
             if DATABASE_TYPE == "postgresql":
                 cursor.execute("""
@@ -56,4 +56,5 @@ except Exception as e:
 
 # Export the Flask app for Vercel
 app = app
+
 

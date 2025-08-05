@@ -1,0 +1,7 @@
+nohup: ignoring input
+✅ Database initialized successfully!
+✅ Brain Link Tracker starting with postgresql database...
+ * Serving Flask app 'main_vercel_fixed'
+ * Debug mode: on
+Address already in use
+Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.
