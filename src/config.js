@@ -9,9 +9,9 @@ export const API_ENDPOINTS = {
     REGISTER: `${API_BASE}/auth/register`,
     ME: `${API_BASE}/auth/me`
   },
-  ANALYTICS: `${API_BASE}/analytics`,
+  ANALYTICS: `${API_BASE}/analytics/overview`,
   CAMPAIGNS: `${API_BASE}/campaigns`,
-  LINKS: `${API_BASE}/links`,
+  LINKS: `${API_BASE}/tracking-links`,
   HEALTH: `${API_BASE}/health`,
   USERS: `${API_BASE}/users`
 };
