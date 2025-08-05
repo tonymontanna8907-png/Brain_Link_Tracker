@@ -146,8 +146,8 @@ const TrackingLinksPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1">
               <Input
                 placeholder="Enter your campaign URL (e.g., https://example.com)"
                 value={newUrl}
@@ -155,7 +155,7 @@ const TrackingLinksPage = () => {
                 className="w-full"
               />
             </div>
-            <div>
+            <div className="md:col-span-1">
               <Input
                 placeholder="Recipient email (optional)"
                 value={newEmail}
@@ -163,7 +163,7 @@ const TrackingLinksPage = () => {
                 className="w-full"
               />
             </div>
-            <div>
+            <div className="md:col-span-1">
               <Input
                 placeholder="Campaign name (optional)"
                 value={newCampaign}
@@ -172,14 +172,14 @@ const TrackingLinksPage = () => {
               />
             </div>
           </div>
-          <div className="flex justify-between items-center mt-4">
-            <div className="text-sm text-muted-foreground">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4 gap-4">
+            <div className="text-sm text-muted-foreground flex-1">
               Your tracking link will be protected against bots, social media crawlers, and security scanners.
             </div>
             <Button 
               onClick={createTrackingLink} 
               disabled={creating || !newUrl.trim()}
-              className="ml-4"
+              className="w-full sm:w-auto"
             >
               {creating ? (
                 <>

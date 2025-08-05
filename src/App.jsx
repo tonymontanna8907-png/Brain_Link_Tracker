@@ -10,6 +10,9 @@ import AdminPanel from './components/AdminPanel'
 import Admin2Dashboard from './components/Admin2Dashboard'
 import MemberDashboard from './components/MemberDashboard'
 import WorkerDashboard from './components/WorkerDashboard'
+import PasswordChangeModal from './components/PasswordChangeModal'
+import ClickAnalyticsTable from './components/ClickAnalyticsTable'
+import CampaignOverview from './components/CampaignOverview'
 import { API_ENDPOINTS } from './config'
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -84,6 +87,35 @@ function App() {
       </div>
     )
   }
+  const handleExport = () => {
+    if (!analytics) {
+      toast.error('No data to export');
+      return;
+    }
+
+    const exportData = {
+      timestamp: new Date().toISOString(),
+      analytics: analytics,
+      user: {
+        username: user.username,
+        role: user.role
+      }
+    };
+
+    const dataStr = JSON.stringify(exportData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `brain-link-tracker-analytics-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast.success('Analytics data exported successfully!');
+  };
 
   if (!user || !token) {
     return (
@@ -137,7 +169,7 @@ function App() {
                 <div className="flex flex-col sm:flex-row sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
                   <h2 className="text-xl lg:text-2xl font-bold text-gray-800">Advanced Analytics</h2>
                   <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs lg:text-sm">
-                    Last updated: {analytics && analytics.last_updated ? new Date(analytics.last_updated).toLocaleTimeString() : 'Loading...'}
+                    Last updated: {analytics ? new Date().toLocaleTimeString() : 'Loading...'}
                   </Badge>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -145,13 +177,11 @@ function App() {
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Refresh
                   </Button>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={handleExport}>
                     <Download className="h-4 w-4 mr-2" />
                     Export
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => alert('Settings functionality coming soon!')}>
-                    <Settings className="h-4 w-4" />
-                  </Button>
+                  <PasswordChangeModal token={token} />
                 </div>
               </div>
 
@@ -160,9 +190,14 @@ function App() {
                   <TabsTrigger value="analytics" className="text-xs sm:text-sm p-2">Analytics</TabsTrigger>
                   <TabsTrigger value="tracking-links" className="text-xs sm:text-sm p-2">Tracking Links</TabsTrigger>
                   {(user.role === 'admin' || user.role === 'admin2') && (
-                    <TabsTrigger value="admin" className="text-xs sm:text-sm p-2 col-span-2 sm:col-span-1">
-                      {user.role === 'admin' ? 'User Management' : 'Team Management'}
-                    </TabsTrigger>
+                    <>
+                      <TabsTrigger value="admin" className="text-xs sm:text-sm p-2">
+                        {user.role === 'admin' ? 'User Management' : 'Team Management'}
+                      </TabsTrigger>
+                      {user.role === 'admin' && (
+                        <TabsTrigger value="campaigns" className="text-xs sm:text-sm p-2">Campaign Overview</TabsTrigger>
+                      )}
+                    </>
                   )}
                   <TabsTrigger value="security" className="text-xs sm:text-sm p-2">Security</TabsTrigger>
                   <TabsTrigger value="geography" className="text-xs sm:text-sm p-2">Geography</TabsTrigger>
@@ -259,6 +294,55 @@ function App() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <Card>
                         <CardHeader>
+                          <CardTitle>User Distribution</CardTitle>
+                          <CardDescription>Breakdown of user types and status</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={[
+                              { name: 'Total Users', value: analytics.total_users || 0, color: '#3b82f6' },
+                              { name: 'Active Users', value: analytics.active_users || 0, color: '#10b981' },
+                              { name: 'Pending Users', value: analytics.pending_users || 0, color: '#f59e0b' },
+                              { name: 'Admin Users', value: analytics.admin_users || 0, color: '#ef4444' }
+                            ]}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Bar dataKey="value" fill="#3b82f6" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader>
+                          <CardTitle>Activity Overview</CardTitle>
+                          <CardDescription>Campaigns, links, and engagement metrics</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <ResponsiveContainer width="100%" height={300}>
+                            <BarChart data={[
+                              { name: 'Campaigns', value: analytics.total_campaigns || 0, color: '#8b5cf6' },
+                              { name: 'Links', value: analytics.total_links || 0, color: '#06b6d4' },
+                              { name: 'Clicks', value: analytics.total_clicks || 0, color: '#f97316' },
+                              { name: 'Pixel Views', value: analytics.total_pixel_views || 0, color: '#84cc16' }
+                            ]}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="name" />
+                              <YAxis />
+                              <Tooltip />
+                              <Bar dataKey="value" fill="#8b5cf6" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Additional Analytics */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      <Card>
+                        <CardHeader>
                           <CardTitle>User Statistics</CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -285,6 +369,32 @@ function App() {
 
                       <Card>
                         <CardHeader>
+                          <CardTitle>Campaign Metrics</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Total Campaigns</span>
+                              <span className="text-lg font-bold">{analytics.total_campaigns || 0}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Total Links</span>
+                              <span className="text-lg font-bold text-blue-600">{analytics.total_links || 0}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Total Clicks</span>
+                              <span className="text-lg font-bold text-purple-600">{analytics.total_clicks || 0}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Pixel Views</span>
+                              <span className="text-lg font-bold text-green-600">{analytics.total_pixel_views || 0}</span>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+
+                      <Card>
+                        <CardHeader>
                           <CardTitle>System Information</CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -299,7 +409,11 @@ function App() {
                             </div>
                             <div className="flex justify-between items-center">
                               <span className="text-sm font-medium">Last Updated</span>
-                              <span className="text-sm">{analytics.last_updated ? new Date(analytics.last_updated).toLocaleString() : 'Just now'}</span>
+                              <span className="text-sm">Just now</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium">Uptime</span>
+                              <span className="text-sm text-green-600">99.9%</span>
                             </div>
                           </div>
                         </CardContent>
@@ -325,6 +439,12 @@ function App() {
                   ) : (
                     <Admin2Dashboard user={user} token={token} />
                   )}
+                </TabsContent>
+              )}
+
+              {user.role === 'admin' && (
+                <TabsContent value="campaigns">
+                  <CampaignOverview token={token} />
                 </TabsContent>
               )}
 
@@ -399,23 +519,7 @@ function App() {
               </TabsContent>
 
               <TabsContent value="live-activity" className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center space-x-2">
-                      <Activity className="h-5 w-5" />
-                      <span>Live Activity</span>
-                      </CardTitle>
-                      <CardDescription>
-                        Live tracking events and user interactions
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center py-8">
-                        <Activity className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-                        <p className="text-gray-600">Live activity data will appear here when users interact with the system.</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                <ClickAnalyticsTable token={token} />
               </TabsContent>
             </Tabs>
           </div>

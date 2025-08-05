@@ -8,6 +8,7 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
 import { toast } from 'sonner';
+import PasswordChangeModal from './PasswordChangeModal';
 import { 
   User, Plus, Eye, BarChart3, TrendingUp, Activity, 
   Link, Mail, Calendar, Globe, Copy, ExternalLink,
@@ -264,10 +265,13 @@ const MemberDashboard = ({ user, token }) => {
           <h2 className="text-2xl font-bold">Member Dashboard</h2>
           <p className="text-muted-foreground">Manage your campaigns and tracking links</p>
         </div>
-        <Badge className="bg-blue-500 text-white">
-          <User className="h-3 w-3 mr-1" />
-          Member - Full Access
-        </Badge>
+        <div className="flex items-center space-x-3">
+          <PasswordChangeModal token={token} />
+          <Badge className="bg-blue-500 text-white">
+            <User className="h-3 w-3 mr-1" />
+            Member - Full Access
+          </Badge>
+        </div>
       </div>
 
       {/* Overview Statistics */}

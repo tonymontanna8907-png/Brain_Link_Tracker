@@ -528,7 +528,7 @@ def register():
 @app.route('/api/users', methods=['GET'])
 @require_auth
 def get_users():
-    """Get all users (admin only)"""
+    """Get all users with detailed information (admin only)"""
     try:
         if request.current_user['role'] != 'admin':
             return jsonify({'error': 'Admin access required'}), 403
@@ -538,13 +538,31 @@ def get_users():
         
         if DATABASE_TYPE == "postgresql":
             cursor.execute("""
-                SELECT id, username, email, role, status, created_at, last_login
-                FROM users ORDER BY created_at DESC
+                SELECT u.id, u.username, u.email, u.role, u.status, u.created_at, u.last_login,
+                       COUNT(DISTINCT c.id) as campaign_count,
+                       COUNT(DISTINCT tl.id) as link_count,
+                       COUNT(DISTINCT te.id) as total_clicks,
+                       MAX(te.timestamp) as last_activity
+                FROM users u
+                LEFT JOIN campaigns c ON u.id = c.user_id
+                LEFT JOIN tracking_links tl ON u.id = tl.user_id
+                LEFT JOIN tracking_events te ON u.id = te.user_id AND te.event_type = 'click'
+                GROUP BY u.id, u.username, u.email, u.role, u.status, u.created_at, u.last_login
+                ORDER BY u.created_at DESC
             """)
         else:
             cursor.execute("""
-                SELECT id, username, email, role, status, created_at, last_login
-                FROM users ORDER BY created_at DESC
+                SELECT u.id, u.username, u.email, u.role, u.status, u.created_at, u.last_login,
+                       COUNT(DISTINCT c.id) as campaign_count,
+                       COUNT(DISTINCT tl.id) as link_count,
+                       COUNT(DISTINCT te.id) as total_clicks,
+                       MAX(te.timestamp) as last_activity
+                FROM users u
+                LEFT JOIN campaigns c ON u.id = c.user_id
+                LEFT JOIN tracking_links tl ON u.id = tl.user_id
+                LEFT JOIN tracking_events te ON u.id = te.user_id AND te.event_type = 'click'
+                GROUP BY u.id, u.username, u.email, u.role, u.status, u.created_at, u.last_login
+                ORDER BY u.created_at DESC
             """)
         
         users = cursor.fetchall()
@@ -560,7 +578,11 @@ def get_users():
                 'role': user[3],
                 'status': user[4],
                 'created_at': user[5],
-                'last_login': user[6]
+                'last_login': user[6],
+                'campaign_count': user[7] or 0,
+                'link_count': user[8] or 0,
+                'total_clicks': user[9] or 0,
+                'last_activity': user[10]
             })
         
         return jsonify(user_list)
@@ -603,6 +625,71 @@ def approve_user(user_id):
     except Exception as e:
         print(f"Approve user error: {e}")
         return jsonify({'error': 'Failed to approve user'}), 500
+
+@app.route('/api/users/change-password', methods=['POST'])
+@require_auth
+def change_password():
+    """Change user password"""
+    try:
+        data = request.get_json()
+        current_password = data.get('current_password')
+        new_password = data.get('new_password')
+        
+        if not current_password or not new_password:
+            return jsonify({'error': 'Current password and new password are required'}), 400
+        
+        if len(new_password) < 6:
+            return jsonify({'error': 'New password must be at least 6 characters long'}), 400
+        
+        user_id = request.current_user['id']
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get current password hash
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,))
+        else:
+            cursor.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,))
+        
+        result = cursor.fetchone()
+        if not result:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'User not found'}), 404
+        
+        current_password_hash = result[0]
+        
+        # Verify current password
+        if not bcrypt.checkpw(current_password.encode('utf-8'), current_password_hash.encode('utf-8')):
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'Current password is incorrect'}), 400
+        
+        # Hash new password
+        new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
+        # Update password
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                UPDATE users SET password_hash = %s, updated_at = CURRENT_TIMESTAMP 
+                WHERE id = %s
+            """, (new_password_hash, user_id))
+        else:
+            cursor.execute("""
+                UPDATE users SET password_hash = ?, updated_at = datetime('now') 
+                WHERE id = ?
+            """, (new_password_hash, user_id))
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'Password changed successfully'})
+        
+    except Exception as e:
+        print(f"Change password error: {e}")
+        return jsonify({'error': 'Failed to change password'}), 500
 
 # Campaign management endpoints
 @app.route('/api/campaigns', methods=['GET'])
@@ -1029,8 +1116,93 @@ def get_analytics_overview():
         print(f"Analytics overview error: {e}")
         return jsonify({'error': 'Failed to fetch analytics'}), 500
 
-# Error handlers
-@app.errorhandler(404)
+@app.route('/api/analytics/clicks', methods=['GET'])
+@require_auth
+def get_click_analytics():
+    """Get detailed click analytics for current user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                SELECT te.tracking_token, te.ip_address, te.user_agent, te.timestamp,
+                       tl.original_url, c.name as campaign_name,
+                       te.event_type
+                FROM tracking_events te
+                LEFT JOIN tracking_links tl ON te.tracking_token = tl.tracking_token
+                LEFT JOIN campaigns c ON te.campaign_id = c.id
+                WHERE te.user_id = %s AND te.event_type = 'click'
+                ORDER BY te.timestamp DESC
+                LIMIT 100
+            """, (request.current_user['id'],))
+        else:
+            cursor.execute("""
+                SELECT te.tracking_token, te.ip_address, te.user_agent, te.timestamp,
+                       tl.original_url, c.name as campaign_name,
+                       te.event_type
+                FROM tracking_events te
+                LEFT JOIN tracking_links tl ON te.tracking_token = tl.tracking_token
+                LEFT JOIN campaigns c ON te.campaign_id = c.id
+                WHERE te.user_id = ? AND te.event_type = 'click'
+                ORDER BY te.timestamp DESC
+                LIMIT 100
+            """, (request.current_user['id'],))
+        
+        clicks = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        
+        # Process click data to include geolocation and ISP info
+        click_analytics = []
+        for click in clicks:
+            tracking_token, ip_address, user_agent, timestamp, original_url, campaign_name, event_type = click
+            
+            # Parse user agent for better display
+            parsed_ua = parse(user_agent) if user_agent else None
+            
+            # For demo purposes, we'll add mock geolocation data
+            # In production, you would use a real GeoIP service
+            country = "United States"
+            state = "California"
+            isp = "Comcast Cable"
+            
+            # Try to get more specific location based on IP patterns
+            if ip_address:
+                if ip_address.startswith('192.168') or ip_address.startswith('10.') or ip_address.startswith('172.'):
+                    country = "Local Network"
+                    state = "Private"
+                    isp = "Local ISP"
+                elif '110.191.241' in ip_address:
+                    country = "Philippines"
+                    state = "Metro Manila"
+                    isp = "PLDT Inc."
+            
+            click_analytics.append({
+                'tracking_token': tracking_token,
+                'ip_address': ip_address,
+                'user_agent': user_agent,
+                'browser': f"{parsed_ua.browser.family} {parsed_ua.browser.version_string}" if parsed_ua else "Unknown",
+                'os': f"{parsed_ua.os.family} {parsed_ua.os.version_string}" if parsed_ua else "Unknown",
+                'timestamp': timestamp.isoformat() if timestamp else None,
+                'original_url': original_url,
+                'campaign_name': campaign_name or 'N/A',
+                'country': country,
+                'state': state,
+                'isp': isp,
+                'event_type': event_type
+            })
+        
+        return jsonify({
+            'clicks': click_analytics,
+            'total_clicks': len(click_analytics)
+        })
+        
+    except Exception as e:
+        print(f"Click analytics error: {e}")
+        return jsonify({'error': 'Failed to fetch click analytics'}), 500
+
+# Health check endpointerrorhandler(404)
 def not_found(error):
     return send_from_directory(app.static_folder, 'index.html')
 

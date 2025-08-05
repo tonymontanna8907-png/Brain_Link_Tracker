@@ -10,9 +10,11 @@ export const API_ENDPOINTS = {
     ME: `${API_BASE}/auth/me`
   },
   ANALYTICS: `${API_BASE}/analytics/overview`,
+  CLICK_ANALYTICS: `${API_BASE}/analytics/clicks`,
   CAMPAIGNS: `${API_BASE}/campaigns`,
   LINKS: `${API_BASE}/tracking-links`,
   HEALTH: `${API_BASE}/health`,
-  USERS: `${API_BASE}/users`
+  USERS: `${API_BASE}/users`,
+  CHANGE_PASSWORD: `${API_BASE}/users/change-password`
 };
 

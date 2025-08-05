@@ -256,8 +256,11 @@ const AdminPanel = ({ user, token }) => {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Campaigns</TableHead>
+                <TableHead>Links</TableHead>
+                <TableHead>Clicks</TableHead>
                 <TableHead>Last Login</TableHead>
-                <TableHead>Subscription</TableHead>
+                <TableHead>Last Activity</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -279,13 +282,26 @@ const AdminPanel = ({ user, token }) => {
                       {userItem.status}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="outline" className="text-xs">
+                      {userItem.campaign_count || 0}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="outline" className="text-xs">
+                      {userItem.link_count || 0}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <Badge variant="outline" className="text-xs">
+                      {userItem.total_clicks || 0}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">
                     {userItem.last_login ? new Date(userItem.last_login).toLocaleDateString() : 'Never'}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant={userItem.subscription_status === 'active' ? 'default' : 'secondary'}>
-                      {userItem.subscription_status}
-                    </Badge>
+                  <TableCell className="text-sm">
+                    {userItem.last_activity ? new Date(userItem.last_activity).toLocaleDateString() : 'No activity'}
                   </TableCell>
                   <TableCell>
                     {userItem.role !== 'admin' && (
