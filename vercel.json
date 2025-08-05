@@ -11,9 +11,7 @@
     {
       "src": "api/index.py",
       "use": "@vercel/python",
-      "config": { 
-        "excludeFiles": ["src/**"]
-      }
+      "excludeFiles": ["src/**"]
     }
   ],
   "routes": [
