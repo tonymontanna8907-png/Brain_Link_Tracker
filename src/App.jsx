@@ -156,24 +156,24 @@ function App() {
               </div>
 
               <Tabs defaultValue="analytics" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1">
-                  <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                  <TabsTrigger value="tracking-links">Tracking Links</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-1 h-auto p-1">
+                  <TabsTrigger value="analytics" className="text-xs sm:text-sm p-2">Analytics</TabsTrigger>
+                  <TabsTrigger value="tracking-links" className="text-xs sm:text-sm p-2">Tracking Links</TabsTrigger>
                   {(user.role === 'admin' || user.role === 'admin2') && (
-                    <TabsTrigger value="admin">
+                    <TabsTrigger value="admin" className="text-xs sm:text-sm p-2 col-span-2 sm:col-span-1">
                       {user.role === 'admin' ? 'User Management' : 'Team Management'}
                     </TabsTrigger>
                   )}
-                  <TabsTrigger value="security">Security</TabsTrigger>
-                  <TabsTrigger value="geography">Geography</TabsTrigger>
-                  <TabsTrigger value="live-activity">Live Activity</TabsTrigger>
+                  <TabsTrigger value="security" className="text-xs sm:text-sm p-2">Security</TabsTrigger>
+                  <TabsTrigger value="geography" className="text-xs sm:text-sm p-2">Geography</TabsTrigger>
+                  <TabsTrigger value="live-activity" className="text-xs sm:text-sm p-2">Live Activity</TabsTrigger>
                 </TabsList>
 
               <TabsContent value="analytics" className="space-y-6">
                 {analytics ? (
                   <>
                     {/* Overview Cards */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4">
                       <Card>
                         <CardContent className="p-4">
                           <div className="flex items-center space-x-2">
