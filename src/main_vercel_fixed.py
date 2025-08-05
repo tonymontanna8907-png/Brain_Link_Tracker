@@ -569,6 +569,41 @@ def get_users():
         print(f"Get users error: {e}")
         return jsonify({'error': 'Failed to fetch users'}), 500
 
+@app.route('/api/users/<int:user_id>/approve', methods=['POST'])
+@require_auth
+def approve_user(user_id):
+    """Approve a user account (admin only)"""
+    try:
+        if request.current_user['role'] != 'admin':
+            return jsonify({'error': 'Admin access required'}), 403
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        if DATABASE_TYPE == "postgresql":
+            cursor.execute("""
+                UPDATE users SET status = 'active' WHERE id = %s AND status = 'pending'
+            """, (user_id,))
+        else:
+            cursor.execute("""
+                UPDATE users SET status = 'active' WHERE id = ? AND status = 'pending'
+            """, (user_id,))
+        
+        if cursor.rowcount == 0:
+            cursor.close()
+            conn.close()
+            return jsonify({'error': 'User not found or already approved'}), 404
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        return jsonify({'message': 'User approved successfully'})
+        
+    except Exception as e:
+        print(f"Approve user error: {e}")
+        return jsonify({'error': 'Failed to approve user'}), 500
+
 # Campaign management endpoints
 @app.route('/api/campaigns', methods=['GET'])
 @require_auth
