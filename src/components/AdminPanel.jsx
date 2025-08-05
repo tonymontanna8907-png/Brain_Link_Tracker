@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from './ui/label';
 import { toast } from 'sonner';
 import { Users, UserCheck, UserX, Shield, Crown, Briefcase, HardHat } from 'lucide-react';
+import { API_ENDPOINTS } from '../config';
 
 const AdminPanel = ({ user, token }) => {
   const [users, setUsers] = useState([]);
@@ -20,19 +21,21 @@ const AdminPanel = ({ user, token }) => {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch('https://5000-i3axerqweb415mh7wgsgs-15aa9b1c.manus.computer/api/admin/users', {
+      const response = await fetch(API_ENDPOINTS.USERS, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
       });
 
       if (response.ok) {
         const data = await response.json();
-        setUsers(data.users);
+        setUsers(data || []);
       } else {
         toast.error('Failed to fetch users');
       }
     } catch (error) {
+      console.error('Error fetching users:', error);
       toast.error('Network error');
     } finally {
       setLoading(false);
@@ -41,10 +44,11 @@ const AdminPanel = ({ user, token }) => {
 
   const approveUser = async (userId) => {
     try {
-      const response = await fetch(`https://5000-i3axerqweb415mh7wgsgs-15aa9b1c.manus.computer/api/admin/users/${userId}/approve`, {
+      const response = await fetch(`${API_ENDPOINTS.USERS}/${userId}/approve`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
       });
 

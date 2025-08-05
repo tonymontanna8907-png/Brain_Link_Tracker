@@ -25,6 +25,7 @@ import {
   RefreshCw, Search, Filter
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { API_ENDPOINTS } from '../config'
 
 const TrackingLinksPage = () => {
   const [trackingLinks, setTrackingLinks] = useState([])
@@ -35,17 +36,25 @@ const TrackingLinksPage = () => {
   const [creating, setCreating] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
 
+  // Get auth token from localStorage
+  const getAuthToken = () => localStorage.getItem('authToken')
+
   // Fetch tracking links from API
   const fetchTrackingLinks = async () => {
     try {
       setLoading(true)
-      const response = await fetch('https://5000-i3axerqweb415mh7wgsgs-15aa9b1c.manus.computer/api/tracking-links')
+      const response = await fetch(API_ENDPOINTS.LINKS, {
+        headers: {
+          'Authorization': `Bearer ${getAuthToken()}`,
+          'Content-Type': 'application/json'
+        }
+      })
       const data = await response.json()
       
-      if (data.success) {
-        setTrackingLinks(data.tracking_links)
+      if (response.ok) {
+        setTrackingLinks(data.tracking_links || [])
       } else {
-        toast.error('Failed to load tracking links')
+        toast.error(data.error || 'Failed to load tracking links')
       }
     } catch (error) {
       console.error('Error fetching tracking links:', error)
@@ -64,21 +73,22 @@ const TrackingLinksPage = () => {
 
     try {
       setCreating(true)
-      const response = await fetch('https://5000-i3axerqweb415mh7wgsgs-15aa9b1c.manus.computer/api/tracking-links', {
+      const response = await fetch(API_ENDPOINTS.LINKS, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${getAuthToken()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           original_url: newUrl,
           recipient_email: newEmail,
-          campaign_name: newCampaign || 'Default Campaign'
+          recipient_name: newCampaign || 'Default Campaign'
         })
       })
 
       const data = await response.json()
       
-      if (data.success) {
+      if (response.ok) {
         toast.success('Tracking link created successfully!')
         setNewUrl('')
         setNewEmail('')
